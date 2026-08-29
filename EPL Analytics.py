@@ -2323,9 +2323,6 @@ else:
                 df_compare_table["差分"] = (
                     df_compare_table["Dream Team (p90)"] - df_compare_table[cmp_label+" (p90)"]
                 ).round(3)
-                df_compare_table["vs 比較"] = (
-                    df_compare_table["Dream Team"] - df_compare_table[cmp_label]
-                ).round(2)
                 st.dataframe(df_compare_table, use_container_width=True, hide_index=True)
                 st.caption(f"選手数: {len(selected_players)}人  |  青=Dream Team  赤破線={cmp_label}")
             else:
