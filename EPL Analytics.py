@@ -2307,8 +2307,66 @@ else:
 
                 # レーダー描画
                 labels = sel_dt_metrics
-                n = len(labels)
-                angles = [i * 2 * np.pi / n for i in range(n)] + [0]
+                N = len(labels)
+                angles = [n/float(N)*2*np.pi for n in range(N)] + [0]
+
+                def _team_per90(grp, col):
+                    m = max(grp["minutes"].sum() / 90, 1)
+                    return grp[col].sum() / m if col in grp.columns else 0.0
+
+                def _get_pool(m_label):
+                    col = dt_metrics_map.get(m_label)
+                    if col and col in df_filt.columns:
+                        return df_filt.groupby("team_name").apply(
+                            lambda g: _team_per90(g, col)
+                        ).tolist()
+                    return []
+
+                def _to_pct(vals_dict, labels):
+                    pct = []
+                    for m in labels:
+                        v    = vals_dict.get(m, 0)
+                        pool = _get_pool(m)
+                        if pool and max(pool) > 0:
+                            pct.append(float((np.array(pool) <= v).mean()))
+                        else:
+                            pct.append(0.0)
+                    return pct + pct[:1]
+
+                fig_radar, ax_r = plt.subplots(figsize=(4, 4), subplot_kw=dict(polar=True))
+                fig_radar.patch.set_facecolor("#ffffff")
+                ax_r.set_facecolor("#f8f9fa")
+                ax_r.set_theta_offset(np.pi / 2)
+                ax_r.set_theta_direction(-1)
+                ax_r.set_xticks(angles[:-1])
+                ax_r.set_xticklabels(labels, size=8, color="#1a1a2e")
+                ax_r.set_yticks([0.25, 0.5, 0.75, 1.0])
+                ax_r.set_yticklabels(["25%","50%","75%","100%"], size=6, color="#94a3b8")
+                ax_r.set_ylim(0, 1)
+                ax_r.grid(color="#e0e0e0", lw=0.5)
+
+                # ① リーグ平均（常に破線）
+                avg_pct = _to_pct(avg_vals, labels)
+                ax_r.plot(angles, avg_pct, color="#94a3b8", lw=1.5, ls="--",
+                          label="League Avg", alpha=0.8)
+                ax_r.fill(angles, avg_pct, color="#94a3b8", alpha=0.08)
+
+                # ② Dream Team（実線）
+                dt_pct = _to_pct(dt_vals, labels)
+                ax_r.plot(angles, dt_pct, color="#1e3a5f", lw=2.5, ls="-",
+                          label="Dream Team", alpha=0.9)
+                ax_r.fill(angles, dt_pct, color="#1e3a5f", alpha=0.25)
+
+                # ③ 比較チーム（オプション・点線）
+                if compare_team and team_vals:
+                    team_pct = _to_pct(team_vals, labels)
+                    ax_r.plot(angles, team_pct, color="#f4a261", lw=2, ls="-.",
+                              label=compare_team, alpha=0.85)
+                    ax_r.fill(angles, team_pct, color="#f4a261", alpha=0.12)
+
+                ax_r.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15),
+                             fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
+                             labelcolor="#1a1a2e")
 
                 ax_r.set_title("Dream Team  (per 90 min — percentile vs league)",
                                 color="#1a1a2e", fontweight="bold", pad=15)
