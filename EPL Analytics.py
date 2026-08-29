@@ -2060,39 +2060,52 @@ else:
         st.markdown("<div class='section-bar'></div>", unsafe_allow_html=True)
         st.caption("11人を選んでチームとしての総合スタッツを確認。フォーメーション配置図・レーダーチャート・数値テーブルで実在チームやリーグ平均と比較できます。")
 
-        # フォーメーション定義 {name: [(pos_label, row, col_pct)]}
-        FORMATIONS = {
-            "4-3-3": [
-                ("LW",0,0.2), ("CF",0,0.5), ("RW",0,0.8),
-                ("LCM",1,0.25), ("CM",1,0.5), ("RCM",1,0.75),
-                ("LB",2,0.15), ("LCB",2,0.38), ("RCB",2,0.62), ("RB",2,0.85),
-                ("GK",3,0.5),
-            ],
-            "4-4-2": [
-                ("LST",0,0.33), ("RST",0,0.67),
-                ("LM",1,0.15), ("LCM",1,0.4), ("RCM",1,0.6), ("RM",1,0.85),
-                ("LB",2,0.15), ("LCB",2,0.38), ("RCB",2,0.62), ("RB",2,0.85),
-                ("GK",3,0.5),
-            ],
-            "3-5-2": [
-                ("LST",0,0.33), ("RST",0,0.67),
-                ("LM",1,0.1), ("LCM",1,0.32), ("CM",1,0.5), ("RCM",1,0.68), ("RM",1,0.9),
-                ("LCB",2,0.25), ("CB",2,0.5), ("RCB",2,0.75),
-                ("GK",3,0.5),
-            ],
-            "4-2-3-1": [
-                ("ST",0,0.5),
-                ("LAM",1,0.2), ("CAM",1,0.5), ("RAM",1,0.8),
-                ("LDM",2,0.35), ("RDM",2,0.65),
-                ("LB",3,0.15), ("LCB",3,0.38), ("RCB",3,0.62), ("RB",3,0.85),
-                ("GK",4,0.5),
-            ],
-        }
+        def make_positions(n_df, n_mf):
+            """DF数・MF数からポジションリストを動的生成"""
+            n_fw = 10 - n_df - n_mf
+            positions = []
+            row = 0
+
+            # FW行
+            fw_labels = {1:["ST"], 2:["LST","RST"], 3:["LW","CF","RW"],
+                         4:["LW","LST","RST","RW"]}.get(n_fw, [f"FW{i+1}" for i in range(n_fw)])
+            xs_fw = [0.15 + 0.7*(i/(max(n_fw-1,1))) for i in range(n_fw)]
+            for i, lbl in enumerate(fw_labels):
+                positions.append((lbl, row, xs_fw[i]))
+            row += 1
+
+            # MF行
+            mf_labels = {3:["LCM","CM","RCM"], 4:["LM","LCM","RCM","RM"],
+                         5:["LM","LCM","CM","RCM","RM"]}.get(n_mf, [f"MF{i+1}" for i in range(n_mf)])
+            xs_mf = [0.1 + 0.8*(i/(max(n_mf-1,1))) for i in range(n_mf)]
+            for i, lbl in enumerate(mf_labels):
+                positions.append((lbl, row, xs_mf[i]))
+            row += 1
+
+            # DF行
+            df_labels = {3:["LCB","CB","RCB"], 4:["LB","LCB","RCB","RB"],
+                         5:["LB","LCB","CB","RCB","RB"]}.get(n_df, [f"DF{i+1}" for i in range(n_df)])
+            xs_df = [0.08 + 0.84*(i/(max(n_df-1,1))) for i in range(n_df)]
+            for i, lbl in enumerate(df_labels):
+                positions.append((lbl, row, xs_df[i]))
+            row += 1
+
+            # GK
+            positions.append(("GK", row, 0.5))
+            return positions
 
         col_d1, col_d2 = st.columns([1, 2])
         with col_d1:
-            formation = st.selectbox("フォーメーション", list(FORMATIONS.keys()), key="dt_form")
-            pos_list  = FORMATIONS[formation]
+            n_df = st.radio("DF人数", [3, 4, 5], index=1, horizontal=True, key="dt_df")
+            n_mf = st.radio("MF人数", [3, 4, 5], index=0, horizontal=True, key="dt_mf")
+            n_fw = 10 - n_df - n_mf
+            if n_fw < 1:
+                st.error("FWが0人以下になります。DFかMFを減らしてください。")
+                n_mf = 3
+                n_fw = 10 - n_df - n_mf
+            formation = f"{n_df}-{n_mf}-{n_fw}"
+            st.markdown(f"**フォーメーション: {formation}**")
+            pos_list = make_positions(n_df, n_mf)
 
             # 各ポジションに選手を割り当て
             all_players_dt = sorted(df_filt["display_name"].tolist())
@@ -2182,16 +2195,14 @@ else:
                 color = pos_colors.get(pos_label, "#64748b")
                 alpha = 0.95 if player_name != "(未選択)" else 0.4
 
-                circle = plt.Circle((col_pct, y), 0.048, color=color, alpha=alpha, zorder=3)
-                ax_field.add_patch(circle)
-                # ポジションラベル
-                ax_field.text(col_pct, y+0.005, pos_label, ha="center", va="center",
-                              fontsize=6, color="white", fontweight="bold", zorder=4)
-                # 選手名（背景付き）
-                ax_field.text(col_pct, y - 0.075, short_name, ha="center", va="top",
-                              fontsize=5.8, color="white", alpha=0.95, zorder=4,
-                              bbox=dict(boxstyle="round,pad=0.1",
-                                        fc="#00000055", ec="none"))
+                # ポジションラベル（小さく）
+                ax_field.text(col_pct, y + 0.04, pos_label, ha="center", va="bottom",
+                              fontsize=6.5, color="white", alpha=0.75, zorder=4)
+                # 選手名（大きく・背景付き）
+                ax_field.text(col_pct, y, short_name, ha="center", va="center",
+                              fontsize=8.5, color="white", fontweight="bold", zorder=4,
+                              bbox=dict(boxstyle="round,pad=0.25",
+                                        fc=color+"cc", ec="white", lw=0.8, alpha=alpha))
 
             plt.tight_layout(pad=0.2)
             st.pyplot(fig_field, use_container_width=True)
@@ -2199,11 +2210,14 @@ else:
             # ── スタッツカード ───────────────────────────────────
             if len(selected_players) >= 1:
                 df_selected_preview = df_filt[df_filt["display_name"].isin(selected_players)]
-                _kcols = st.columns(4)
+                _kcols = st.columns(5)
                 _kcols[0].metric("⚽ xG合計",    f"{df_selected_preview['expected_goals'].sum():.2f}")
                 _kcols[1].metric("🎯 xA合計",    f"{df_selected_preview['expected_assists'].sum():.2f}")
                 _kcols[2].metric("🛡️ CBI合計",   f"{df_selected_preview['clearances_blocks_interceptions'].sum():.0f}")
                 _kcols[3].metric("💡 Creativity", f"{df_selected_preview['creativity'].sum():.1f}")
+                _total_price = df_selected_preview["price_m"].sum()
+                _kcols[4].metric("💰 総額",       f"£{_total_price:.1f}M",
+                                  help="FPL移籍市場の現在価格の合計（シーズン中変動あり）")
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
