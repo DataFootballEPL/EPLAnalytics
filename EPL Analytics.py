@@ -2239,12 +2239,16 @@ else:
                 _total_price = df_sp["price_m"].sum()
 
                 st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPLゲーム内価格（架空・£100M予算制）。実際の移籍金とは無関係。")
-                _kcols = st.columns(5)
+                _fpl_pts = float(df_sp["total_points"].sum()) if "total_points" in df_sp.columns else 0.0
+                _kcols = st.columns(6)
                 _kcols[0].metric("⚽ xG/90",     f"{_xg:.3f}")
                 _kcols[1].metric("🎯 xA/90",     f"{_xa:.3f}")
                 _kcols[2].metric("🛡️ CBI/90",    f"{_cbi:.2f}")
                 _kcols[3].metric("💡 Cre/90",    f"{_cre:.1f}")
-                _kcols[4].metric("💰",            f"£{_total_price:.0f}M")
+                _kcols[4].metric("🏆 FPL pts",   f"{_fpl_pts:.0f}",
+                                  help="11人のFPLポイント合計（シーズン累計）")
+                _kcols[5].metric("💰 FPL価格",    f"£{_total_price:.1f}M",
+                                  help="FPLゲーム内の架空価格の合計。実際の移籍金とは異なります。")
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
