@@ -2244,7 +2244,7 @@ else:
                 _kcols[1].metric("🎯 xA/90",     f"{_xa:.3f}")
                 _kcols[2].metric("🛡️ CBI/90",    f"{_cbi:.2f}")
                 _kcols[3].metric("💡 Cre/90",    f"{_cre:.1f}")
-                _kcols[4].metric("💰 総額",       f"£{_total_price:.1f}M")
+                _kcols[4].metric("💰",            f"£{_total_price:.0f}M")
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
