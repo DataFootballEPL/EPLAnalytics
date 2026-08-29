@@ -1577,13 +1577,14 @@ else:
                         f"Filtered players: <b style='color:{C['amber']}'>{len(df_filt)}</b></div>",
                         unsafe_allow_html=True)
 
-    tab_avail, tab_top10, tab_prad, tab_scatter2, tab_pcap, tab_unit, tab_custp = st.tabs([
+    tab_avail, tab_top10, tab_prad, tab_scatter2, tab_pcap, tab_unit, tab_dream, tab_custp = st.tabs([
         "📋 Available Metrics",
         "🏆 Top 10 Rankings",
         "🕸️ Player Radar",
         "⊕ 2-Axis Plot",
         "📐 Play Style (PCA)",
         "👥 Unit Analysis",
+        "⚽ Dream Team",
         "🔧 Custom Metric",
     ])
 
@@ -2053,6 +2054,248 @@ else:
                         st.caption("相対評価: 比較ユニット内でのパーセンタイル")
 
                     st.caption("共出場GW数が5節未満の場合は統計的信頼性が下がります。")
+
+    with tab_dream:
+        st.markdown("## ⚽ Dream Team Builder")
+        st.markdown("<div class='section-bar'></div>", unsafe_allow_html=True)
+        st.caption("11人を選んでチームとしての総合スタッツを確認。フォーメーション配置図・レーダーチャート・数値テーブルで実在チームやリーグ平均と比較できます。")
+
+        # フォーメーション定義 {name: [(pos_label, row, col_pct)]}
+        FORMATIONS = {
+            "4-3-3": [
+                ("LW",0,0.2), ("CF",0,0.5), ("RW",0,0.8),
+                ("LCM",1,0.25), ("CM",1,0.5), ("RCM",1,0.75),
+                ("LB",2,0.15), ("LCB",2,0.38), ("RCB",2,0.62), ("RB",2,0.85),
+                ("GK",3,0.5),
+            ],
+            "4-4-2": [
+                ("LST",0,0.33), ("RST",0,0.67),
+                ("LM",1,0.15), ("LCM",1,0.4), ("RCM",1,0.6), ("RM",1,0.85),
+                ("LB",2,0.15), ("LCB",2,0.38), ("RCB",2,0.62), ("RB",2,0.85),
+                ("GK",3,0.5),
+            ],
+            "3-5-2": [
+                ("LST",0,0.33), ("RST",0,0.67),
+                ("LM",1,0.1), ("LCM",1,0.32), ("CM",1,0.5), ("RCM",1,0.68), ("RM",1,0.9),
+                ("LCB",2,0.25), ("CB",2,0.5), ("RCB",2,0.75),
+                ("GK",3,0.5),
+            ],
+            "4-2-3-1": [
+                ("ST",0,0.5),
+                ("LAM",1,0.2), ("CAM",1,0.5), ("RAM",1,0.8),
+                ("LDM",2,0.35), ("RDM",2,0.65),
+                ("LB",3,0.15), ("LCB",3,0.38), ("RCB",3,0.62), ("RB",3,0.85),
+                ("GK",4,0.5),
+            ],
+        }
+
+        col_d1, col_d2 = st.columns([1, 2])
+        with col_d1:
+            formation = st.selectbox("フォーメーション", list(FORMATIONS.keys()), key="dt_form")
+            pos_list  = FORMATIONS[formation]
+
+            # 各ポジションに選手を割り当て
+            all_players_dt = sorted(df_filt["display_name"].tolist())
+            assignments    = {}
+            st.markdown("**選手を割り当て**")
+            for pos_label, row, col_pct in pos_list:
+                default_idx = 0
+                assignments[pos_label] = st.selectbox(
+                    pos_label, ["(未選択)"] + all_players_dt,
+                    key=f"dt_{pos_label}", label_visibility="visible"
+                )
+
+            # 比較対象
+            st.markdown("**比較対象**")
+            compare_type = st.radio("比較対象", ["リーグ平均", "チームを選択"],
+                                     key="dt_compare", horizontal=True)
+            if compare_type == "チームを選択":
+                compare_team = st.selectbox("チーム", sorted(df_teams["team_name"].tolist()),
+                                             key="dt_team")
+            else:
+                compare_team = None
+
+            # 比較指標
+            dt_metrics_labels = ["xG","xA","xGI","Goals","Assists",
+                                  "Clean Sheets","Saves","CBI","Tackles","Recoveries",
+                                  "Creativity","Threat","Influence"]
+            dt_metrics_map = {
+                "xG": "expected_goals", "xA": "expected_assists",
+                "xGI": "expected_goal_involvements",
+                "Goals": "goals_scored", "Assists": "assists",
+                "Clean Sheets": "clean_sheets", "Saves": "saves",
+                "CBI": "clearances_blocks_interceptions",
+                "Tackles": "tackles", "Recoveries": "recoveries",
+                "Creativity": "creativity", "Threat": "threat", "Influence": "influence",
+            }
+            sel_dt_metrics = st.multiselect("比較指標", dt_metrics_labels,
+                                             default=["xG","xA","Clean Sheets","CBI","Saves","Creativity"],
+                                             key="dt_met")
+
+        with col_d2:
+            selected_players = [v for v in assignments.values() if v != "(未選択)"]
+
+            # ── フィールド配置図 ──────────────────────────────────
+            pos_colors = {"GK":"#f59e0b","LB":"#22c55e","LCB":"#22c55e",
+                          "CB":"#22c55e","RCB":"#22c55e","RB":"#22c55e",
+                          "LDM":"#3b82f6","RDM":"#3b82f6",
+                          "LM":"#3b82f6","LCM":"#3b82f6","CM":"#3b82f6",
+                          "CAM":"#8b5cf6","LAM":"#8b5cf6","RAM":"#8b5cf6",
+                          "RCM":"#3b82f6","RM":"#3b82f6",
+                          "LW":"#ef4444","CF":"#ef4444","RW":"#ef4444",
+                          "LST":"#ef4444","RST":"#ef4444","ST":"#ef4444",}
+
+            n_rows = max(r for _, r, _ in pos_list) + 1
+            fig_field, ax_field = plt.subplots(figsize=(6, 3.8))
+            fig_field.patch.set_facecolor("#2d7a3a")
+            ax_field.set_facecolor("#2d7a3a")
+            ax_field.set_xlim(0, 1); ax_field.set_ylim(0, 1)
+            ax_field.axis("off")
+
+            # ピッチ外枠
+            import matplotlib.patches as mpatches
+            ax_field.add_patch(mpatches.FancyBboxPatch((0.02,0.02),0.96,0.96,
+                boxstyle="square,pad=0", ec="white", fc="none", lw=1.5, alpha=0.7))
+            # センターライン
+            ax_field.plot([0.02,0.98],[0.5,0.5], color="white", lw=1, alpha=0.5)
+            # センターサークル
+            ax_field.add_patch(plt.Circle((0.5,0.5),0.11,fill=False,color="white",lw=1,alpha=0.5))
+            ax_field.plot([0.5],[0.5],"wo",ms=3,alpha=0.6)
+            # ペナルティエリア（上・下）
+            ax_field.add_patch(mpatches.FancyBboxPatch((0.22,0.78),0.56,0.2,
+                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.4))
+            ax_field.add_patch(mpatches.FancyBboxPatch((0.22,0.02),0.56,0.2,
+                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.4))
+            # ゴールエリア
+            ax_field.add_patch(mpatches.FancyBboxPatch((0.36,0.88),0.28,0.1,
+                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.3))
+            ax_field.add_patch(mpatches.FancyBboxPatch((0.36,0.02),0.28,0.1,
+                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.3))
+
+            # 選手プロット
+            row_positions = {}
+            for pos_label, row, col_pct in pos_list:
+                y = 1 - (row + 0.5) / n_rows
+                row_positions[pos_label] = (col_pct, y)
+                player_name = assignments.get(pos_label, "(未選択)")
+                short_name = player_name.split(" (")[0][:10] if player_name != "(未選択)" else "?"
+                color = pos_colors.get(pos_label, "#64748b")
+                alpha = 0.95 if player_name != "(未選択)" else 0.4
+
+                circle = plt.Circle((col_pct, y), 0.048, color=color, alpha=alpha, zorder=3)
+                ax_field.add_patch(circle)
+                # ポジションラベル
+                ax_field.text(col_pct, y+0.005, pos_label, ha="center", va="center",
+                              fontsize=6, color="white", fontweight="bold", zorder=4)
+                # 選手名（背景付き）
+                ax_field.text(col_pct, y - 0.075, short_name, ha="center", va="top",
+                              fontsize=5.8, color="white", alpha=0.95, zorder=4,
+                              bbox=dict(boxstyle="round,pad=0.1",
+                                        fc="#00000055", ec="none"))
+
+            plt.tight_layout(pad=0.2)
+            st.pyplot(fig_field, use_container_width=True)
+
+            # ── スタッツカード ───────────────────────────────────
+            if len(selected_players) >= 1:
+                df_selected_preview = df_filt[df_filt["display_name"].isin(selected_players)]
+                _kcols = st.columns(4)
+                _kcols[0].metric("⚽ xG合計",    f"{df_selected_preview['expected_goals'].sum():.2f}")
+                _kcols[1].metric("🎯 xA合計",    f"{df_selected_preview['expected_assists'].sum():.2f}")
+                _kcols[2].metric("🛡️ CBI合計",   f"{df_selected_preview['clearances_blocks_interceptions'].sum():.0f}")
+                _kcols[3].metric("💡 Creativity", f"{df_selected_preview['creativity'].sum():.1f}")
+
+            # ── レーダーチャート ──────────────────────────────────
+            if len(selected_players) >= 3 and sel_dt_metrics:
+                # 選択した11人の合算値を計算
+                df_selected = df_filt[df_filt["display_name"].isin(selected_players)]
+
+                dt_vals = {}
+                for m_label in sel_dt_metrics:
+                    col = dt_metrics_map.get(m_label)
+                    if col and col in df_selected.columns:
+                        dt_vals[m_label] = float(df_selected[col].sum())
+                    else:
+                        dt_vals[m_label] = 0.0
+
+                # 比較対象の値を取得
+                if compare_type == "チームを選択" and compare_team:
+                    # 選択チームの全選手の合算
+                    df_cmp = df_filt[df_filt["team_name"] == compare_team]
+                    cmp_label = compare_team
+                else:
+                    # リーグ平均（チームごとに合算してから平均）
+                    df_cmp = df_filt
+                    cmp_label = "League Average"
+
+                cmp_vals = {}
+                for m_label in sel_dt_metrics:
+                    col = dt_metrics_map.get(m_label)
+                    if col and col in df_cmp.columns:
+                        if compare_type == "リーグ平均":
+                            # チームごとに合算して20チームの平均
+                            cmp_vals[m_label] = float(
+                                df_cmp.groupby("team_name")[col].sum().mean()
+                            )
+                        else:
+                            cmp_vals[m_label] = float(df_cmp[col].sum())
+                    else:
+                        cmp_vals[m_label] = 0.0
+
+                # レーダー描画
+                labels = sel_dt_metrics
+                n = len(labels)
+                angles = [i * 2 * np.pi / n for i in range(n)] + [0]
+
+                def scale_vals(d_vals, c_vals):
+                    """両者の最大値でスケーリング（0〜1）"""
+                    scaled_d, scaled_c = [], []
+                    for lbl in labels:
+                        mx = max(d_vals.get(lbl,0), c_vals.get(lbl,0), 1e-9)
+                        scaled_d.append(d_vals.get(lbl,0) / mx)
+                        scaled_c.append(c_vals.get(lbl,0) / mx)
+                    return scaled_d + [scaled_d[0]], scaled_c + [scaled_c[0]]
+
+                s_dt, s_cmp = scale_vals(dt_vals, cmp_vals)
+
+                fig_radar, ax_r = plt.subplots(figsize=(5, 5),
+                                                subplot_kw=dict(polar=True))
+                fig_radar.patch.set_facecolor("#ffffff")
+                ax_r.set_facecolor("#f8f9fa")
+                ax_r.set_theta_offset(np.pi / 2)
+                ax_r.set_theta_direction(-1)
+                ax_r.set_xticks(angles[:-1])
+                ax_r.set_xticklabels(labels, size=8, color="#1a1a2e")
+                ax_r.set_yticks([0.25, 0.5, 0.75, 1.0])
+                ax_r.set_yticklabels(["25%","50%","75%","100%"], size=6, color="#94a3b8")
+                ax_r.set_ylim(0, 1)
+                ax_r.grid(color="#e0e0e0", lw=0.5)
+
+                ax_r.plot(angles, s_dt, color="#3b82f6", lw=2, zorder=3, label="Dream Team")
+                ax_r.fill(angles, s_dt, color="#3b82f6", alpha=0.15)
+                ax_r.plot(angles, s_cmp, color="#ef4444", lw=2, ls="--", zorder=3, label=cmp_label)
+                ax_r.fill(angles, s_cmp, color="#ef4444", alpha=0.08)
+                ax_r.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1),
+                             fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
+                             labelcolor="#1a1a2e")
+                ax_r.set_title("Dream Team vs " + cmp_label,
+                                color="#1a1a2e", fontweight="bold", pad=15)
+                plt.tight_layout()
+                st.pyplot(fig_radar, use_container_width=True)
+
+                # 数値テーブル
+                df_compare_table = pd.DataFrame({
+                    "指標": labels,
+                    "Dream Team": [round(dt_vals.get(m, 0), 2) for m in labels],
+                    cmp_label:    [round(cmp_vals.get(m, 0), 2) for m in labels],
+                })
+                df_compare_table["vs 比較"] = (
+                    df_compare_table["Dream Team"] - df_compare_table[cmp_label]
+                ).round(2)
+                st.dataframe(df_compare_table, use_container_width=True, hide_index=True)
+                st.caption(f"選手数: {len(selected_players)}人  |  青=Dream Team  赤破線={cmp_label}")
+            else:
+                st.info("左のパネルで3人以上の選手を割り当て、指標を選択するとレーダーチャートが表示されます。")
 
     with tab_custp:
         st.markdown("## 🔧 Build Your Own Player Metric")
