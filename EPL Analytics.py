@@ -2238,7 +2238,7 @@ else:
                 _cre = df_sp["creativity"].sum() / _matches
                 _total_price = df_sp["price_m"].sum()
 
-                st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPL移籍市場の現在価格合計")
+                st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPLゲーム内価格（架空・£100M予算制）。実際の移籍金とは無関係。")
                 _kcols = st.columns(5)
                 _kcols[0].metric("⚽ xG/90",     f"{_xg:.3f}")
                 _kcols[1].metric("🎯 xA/90",     f"{_xa:.3f}")
