@@ -2386,7 +2386,7 @@ else:
                     df_compare_table["Dream Team (p90)"] - df_compare_table["League Avg (p90)"]
                 ).round(3)
                 st.dataframe(df_compare_table, use_container_width=True, hide_index=True)
-                st.caption(f"選手数: {len(selected_players)}人  |  青=Dream Team  赤破線={cmp_label}")
+                st.caption(f"選手数: {len(selected_players)}人  |  紺=Dream Team  灰破線=League Avg" + (f"  橙点線={compare_team}" if compare_team else ""))
             else:
                 st.info("左のパネルで3人以上の選手を割り当て、指標を選択するとレーダーチャートが表示されます。")
 
