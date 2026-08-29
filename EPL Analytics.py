@@ -2159,31 +2159,44 @@ else:
                           "LST":"#ef4444","RST":"#ef4444","ST":"#ef4444",}
 
             n_rows = max(r for _, r, _ in pos_list) + 1
-            fig_field, ax_field = plt.subplots(figsize=(6, 3.8))
-            fig_field.patch.set_facecolor("#2d7a3a")
-            ax_field.set_facecolor("#2d7a3a")
+            import matplotlib.patches as mpatches
+            fig_field, ax_field = plt.subplots(figsize=(7, 4.8))
+            fig_field.patch.set_facecolor("#1a6b2a")
+            ax_field.set_facecolor("#1a6b2a")
             ax_field.set_xlim(0, 1); ax_field.set_ylim(0, 1)
             ax_field.axis("off")
 
-            # ピッチ外枠
-            import matplotlib.patches as mpatches
-            ax_field.add_patch(mpatches.FancyBboxPatch((0.02,0.02),0.96,0.96,
-                boxstyle="square,pad=0", ec="white", fc="none", lw=1.5, alpha=0.7))
+            _lw, _a = 1.2, 0.55  # 線の太さ・透明度
+
+            # ── ピッチ描画 ──
+            # 外枠
+            ax_field.add_patch(mpatches.FancyBboxPatch(
+                (0.03,0.03),0.94,0.94, boxstyle="square,pad=0",
+                ec="#ffffffbb", fc="none", lw=_lw))
             # センターライン
-            ax_field.plot([0.02,0.98],[0.5,0.5], color="white", lw=1, alpha=0.5)
-            # センターサークル
-            ax_field.add_patch(plt.Circle((0.5,0.5),0.11,fill=False,color="white",lw=1,alpha=0.5))
-            ax_field.plot([0.5],[0.5],"wo",ms=3,alpha=0.6)
-            # ペナルティエリア（上・下）
-            ax_field.add_patch(mpatches.FancyBboxPatch((0.22,0.78),0.56,0.2,
-                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.4))
-            ax_field.add_patch(mpatches.FancyBboxPatch((0.22,0.02),0.56,0.2,
-                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.4))
-            # ゴールエリア
-            ax_field.add_patch(mpatches.FancyBboxPatch((0.36,0.88),0.28,0.1,
-                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.3))
-            ax_field.add_patch(mpatches.FancyBboxPatch((0.36,0.02),0.28,0.1,
-                boxstyle="square,pad=0",ec="white",fc="none",lw=0.8,alpha=0.3))
+            ax_field.plot([0.03,0.97],[0.5,0.5], color="#ffffffbb", lw=_lw)
+            # センターサークル＋スポット
+            ax_field.add_patch(plt.Circle((0.5,0.5),0.10,fill=False,
+                color="#ffffffbb",lw=_lw))
+            ax_field.plot(0.5,0.5,"o",color="white",ms=2.5,alpha=0.7)
+            # ペナルティエリア（上下）
+            for ya, yb in [(0.74,0.97),(0.03,0.26)]:
+                ax_field.add_patch(mpatches.FancyBboxPatch(
+                    (0.2,ya),0.6,yb-ya, boxstyle="square,pad=0",
+                    ec="#ffffffbb",fc="none",lw=_lw))
+            # ゴールエリア（上下）
+            for ya, yb in [(0.86,0.97),(0.03,0.14)]:
+                ax_field.add_patch(mpatches.FancyBboxPatch(
+                    (0.34,ya),0.32,yb-ya, boxstyle="square,pad=0",
+                    ec="#ffffffbb",fc="none",lw=_lw*0.7))
+            # ゴール枠（上下）
+            for ya in [0.97, 0.0]:
+                ax_field.add_patch(mpatches.FancyBboxPatch(
+                    (0.42,ya),0.16,0.03, boxstyle="square,pad=0",
+                    ec="#ffffffbb",fc="#ffffff18",lw=_lw*0.7))
+            # ペナルティスポット（上下）
+            ax_field.plot(0.5,0.89,"o",color="white",ms=2,alpha=0.5)
+            ax_field.plot(0.5,0.11,"o",color="white",ms=2,alpha=0.5)
 
             # 選手プロット
             row_positions = {}
@@ -2195,16 +2208,20 @@ else:
                 color = pos_colors.get(pos_label, "#64748b")
                 alpha = 0.95 if player_name != "(未選択)" else 0.4
 
-                # ポジションラベル（小さく）
-                ax_field.text(col_pct, y + 0.04, pos_label, ha="center", va="bottom",
-                              fontsize=6.5, color="white", alpha=0.75, zorder=4)
-                # 選手名（大きく・背景付き）
-                ax_field.text(col_pct, y, short_name, ha="center", va="center",
-                              fontsize=8.5, color="white", fontweight="bold", zorder=4,
-                              bbox=dict(boxstyle="round,pad=0.25",
-                                        fc=color+"cc", ec="white", lw=0.8, alpha=alpha))
+                # ポジションラベル（ごく小さく）
+                ax_field.text(col_pct, y+0.055, pos_label,
+                              ha="center", va="bottom",
+                              fontsize=5.5, color="white", alpha=0.65, zorder=4)
+                # 選手名（大きく・丸角背景）
+                _fc = color if alpha > 0.5 else "#555555"
+                ax_field.text(col_pct, y, short_name,
+                              ha="center", va="center",
+                              fontsize=9, color="white", fontweight="bold", zorder=5,
+                              bbox=dict(boxstyle="round,pad=0.3",
+                                        fc=_fc, ec="#ffffffaa",
+                                        lw=1.0, alpha=min(alpha+0.1,1.0)))
 
-            plt.tight_layout(pad=0.2)
+            plt.tight_layout(pad=0.3)
             st.pyplot(fig_field, use_container_width=True)
 
             # ── スタッツカード ───────────────────────────────────
