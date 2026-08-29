@@ -2310,37 +2310,6 @@ else:
                 n = len(labels)
                 angles = [i * 2 * np.pi / n for i in range(n)] + [0]
 
-                def scale_vals(d_vals, c_vals):
-                    """両者の最大値でスケーリング（0〜1）"""
-                    scaled_d, scaled_c = [], []
-                    for lbl in labels:
-                        mx = max(d_vals.get(lbl,0), c_vals.get(lbl,0), 1e-9)
-                        scaled_d.append(d_vals.get(lbl,0) / mx)
-                        scaled_c.append(c_vals.get(lbl,0) / mx)
-                    return scaled_d + [scaled_d[0]], scaled_c + [scaled_c[0]]
-
-                s_dt, s_cmp = scale_vals(dt_vals, cmp_vals)
-
-                fig_radar, ax_r = plt.subplots(figsize=(5, 5),
-                                                subplot_kw=dict(polar=True))
-                fig_radar.patch.set_facecolor("#ffffff")
-                ax_r.set_facecolor("#f8f9fa")
-                ax_r.set_theta_offset(np.pi / 2)
-                ax_r.set_theta_direction(-1)
-                ax_r.set_xticks(angles[:-1])
-                ax_r.set_xticklabels(labels, size=8, color="#1a1a2e")
-                ax_r.set_yticks([0.25, 0.5, 0.75, 1.0])
-                ax_r.set_yticklabels(["25%","50%","75%","100%"], size=6, color="#94a3b8")
-                ax_r.set_ylim(0, 1)
-                ax_r.grid(color="#e0e0e0", lw=0.5)
-
-                ax_r.plot(angles, s_dt, color="#3b82f6", lw=2, zorder=3, label="Dream Team")
-                ax_r.fill(angles, s_dt, color="#3b82f6", alpha=0.15)
-                ax_r.plot(angles, s_cmp, color="#ef4444", lw=2, ls="--", zorder=3, label=cmp_label)
-                ax_r.fill(angles, s_cmp, color="#ef4444", alpha=0.08)
-                ax_r.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1),
-                             fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
-                             labelcolor="#1a1a2e")
                 ax_r.set_title("Dream Team  (per 90 min — percentile vs league)",
                                 color="#1a1a2e", fontweight="bold", pad=15)
                 plt.tight_layout()
