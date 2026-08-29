@@ -2118,6 +2118,10 @@ else:
                     key=f"dt_{pos_label}", label_visibility="visible"
                 )
 
+            # 色分けモード
+            color_mode = st.radio("選手の色分け", ["ポジション別", "チーム別"],
+                                   horizontal=True, key="dt_color")
+
             # 比較対象
             st.markdown("**比較対象**")
             compare_type = st.radio("比較対象", ["リーグ平均", "チームを選択"],
@@ -2205,7 +2209,13 @@ else:
                 row_positions[pos_label] = (col_pct, y)
                 player_name = assignments.get(pos_label, "(未選択)")
                 short_name = player_name.split(" (")[0][:10] if player_name != "(未選択)" else "?"
-                color = pos_colors.get(pos_label, "#64748b")
+                if color_mode == "チーム別" and player_name != "(未選択)":
+                    # display_name から チーム名を取得
+                    _prow = df_filt[df_filt["display_name"] == player_name]
+                    _tname = _prow["team_name"].iloc[0] if not _prow.empty else ""
+                    color = tcmap.get(_tname, "#64748b")
+                else:
+                    color = pos_colors.get(pos_label, "#64748b")
                 alpha = 0.95 if player_name != "(未選択)" else 0.4
 
                 # ポジションラベル（ごく小さく）
