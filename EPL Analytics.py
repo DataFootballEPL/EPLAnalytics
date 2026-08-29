@@ -2209,50 +2209,67 @@ else:
 
             # ── スタッツカード ───────────────────────────────────
             if len(selected_players) >= 1:
-                df_selected_preview = df_filt[df_filt["display_name"].isin(selected_players)]
+                df_sp = df_filt[df_filt["display_name"].isin(selected_players)].copy()
+                # per matchに換算: 出場試合数の近似としてstarts列を使用
+                # minutesから試合換算（90分=1試合）
+                _total_min = df_sp["minutes"].sum()
+                _matches   = max(_total_min / 90, 1)  # 11人合計の90分換算試合数
+
+                _xg  = df_sp["expected_goals"].sum() / _matches
+                _xa  = df_sp["expected_assists"].sum() / _matches
+                _cbi = df_sp["clearances_blocks_interceptions"].sum() / _matches
+                _cre = df_sp["creativity"].sum() / _matches
+                _total_price = df_sp["price_m"].sum()
+
+                st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPL移籍市場の現在価格合計")
                 _kcols = st.columns(5)
-                _kcols[0].metric("⚽ xG合計",    f"{df_selected_preview['expected_goals'].sum():.2f}")
-                _kcols[1].metric("🎯 xA合計",    f"{df_selected_preview['expected_assists'].sum():.2f}")
-                _kcols[2].metric("🛡️ CBI合計",   f"{df_selected_preview['clearances_blocks_interceptions'].sum():.0f}")
-                _kcols[3].metric("💡 Creativity", f"{df_selected_preview['creativity'].sum():.1f}")
-                _total_price = df_selected_preview["price_m"].sum()
-                _kcols[4].metric("💰 総額",       f"£{_total_price:.1f}M",
-                                  help="FPL移籍市場の現在価格の合計（シーズン中変動あり）")
+                _kcols[0].metric("⚽ xG/90",     f"{_xg:.3f}")
+                _kcols[1].metric("🎯 xA/90",     f"{_xa:.3f}")
+                _kcols[2].metric("🛡️ CBI/90",    f"{_cbi:.2f}")
+                _kcols[3].metric("💡 Cre/90",    f"{_cre:.1f}")
+                _kcols[4].metric("💰 総額",       f"£{_total_price:.1f}M")
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
                 # 選択した11人の合算値を計算
                 df_selected = df_filt[df_filt["display_name"].isin(selected_players)]
 
+                # Dream Team: per 90min換算
+                _dt_min     = df_selected["minutes"].sum()
+                _dt_matches = max(_dt_min / 90, 1)
+
                 dt_vals = {}
                 for m_label in sel_dt_metrics:
                     col = dt_metrics_map.get(m_label)
                     if col and col in df_selected.columns:
-                        dt_vals[m_label] = float(df_selected[col].sum())
+                        _raw = float(df_selected[col].sum())
+                        dt_vals[m_label] = _raw / _dt_matches
                     else:
                         dt_vals[m_label] = 0.0
 
-                # 比較対象の値を取得
+                # 比較対象もper 90min換算
                 if compare_type == "チームを選択" and compare_team:
-                    # 選択チームの全選手の合算
-                    df_cmp = df_filt[df_filt["team_name"] == compare_team]
+                    df_cmp    = df_filt[df_filt["team_name"] == compare_team]
                     cmp_label = compare_team
                 else:
-                    # リーグ平均（チームごとに合算してから平均）
-                    df_cmp = df_filt
-                    cmp_label = "League Average"
+                    df_cmp    = df_filt
+                    cmp_label = "League Avg"
 
                 cmp_vals = {}
                 for m_label in sel_dt_metrics:
                     col = dt_metrics_map.get(m_label)
                     if col and col in df_cmp.columns:
                         if compare_type == "リーグ平均":
-                            # チームごとに合算して20チームの平均
+                            # チームごとにper90換算してから平均
+                            def _per90(grp):
+                                m = max(grp["minutes"].sum() / 90, 1)
+                                return grp[col].sum() / m
                             cmp_vals[m_label] = float(
-                                df_cmp.groupby("team_name")[col].sum().mean()
+                                df_cmp.groupby("team_name").apply(_per90).mean()
                             )
                         else:
-                            cmp_vals[m_label] = float(df_cmp[col].sum())
+                            _cmp_min = max(df_cmp["minutes"].sum() / 90, 1)
+                            cmp_vals[m_label] = float(df_cmp[col].sum()) / _cmp_min
                     else:
                         cmp_vals[m_label] = 0.0
 
@@ -2292,7 +2309,7 @@ else:
                 ax_r.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1),
                              fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
                              labelcolor="#1a1a2e")
-                ax_r.set_title("Dream Team vs " + cmp_label,
+                ax_r.set_title("Dream Team vs " + cmp_label + "  (per 90 min)",
                                 color="#1a1a2e", fontweight="bold", pad=15)
                 plt.tight_layout()
                 st.pyplot(fig_radar, use_container_width=True)
@@ -2300,9 +2317,12 @@ else:
                 # 数値テーブル
                 df_compare_table = pd.DataFrame({
                     "指標": labels,
-                    "Dream Team": [round(dt_vals.get(m, 0), 2) for m in labels],
-                    cmp_label:    [round(cmp_vals.get(m, 0), 2) for m in labels],
+                    "Dream Team (p90)": [round(dt_vals.get(m, 0), 3) for m in labels],
+                    cmp_label+" (p90)": [round(cmp_vals.get(m, 0), 3) for m in labels],
                 })
+                df_compare_table["差分"] = (
+                    df_compare_table["Dream Team (p90)"] - df_compare_table[cmp_label+" (p90)"]
+                ).round(3)
                 df_compare_table["vs 比較"] = (
                     df_compare_table["Dream Team"] - df_compare_table[cmp_label]
                 ).round(2)
