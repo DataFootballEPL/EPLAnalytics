@@ -2240,15 +2240,26 @@ else:
 
                 st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPLゲーム内価格（架空・£100M予算制）。実際の移籍金とは無関係。")
                 _fpl_pts = float(df_sp["total_points"].sum()) if "total_points" in df_sp.columns else 0.0
-                _kcols = st.columns(6)
-                _kcols[0].metric("⚽ xG/90",     f"{_xg:.3f}")
-                _kcols[1].metric("🎯 xA/90",     f"{_xa:.3f}")
-                _kcols[2].metric("🛡️ CBI/90",    f"{_cbi:.2f}")
-                _kcols[3].metric("💡 Cre/90",    f"{_cre:.1f}")
-                _kcols[4].metric("🏆 FPL pts",   f"{_fpl_pts:.0f}",
-                                  help="11人のFPLポイント合計（シーズン累計）")
-                _kcols[5].metric("💰 FPL価格",    f"£{_total_price:.1f}M",
-                                  help="FPLゲーム内の架空価格の合計。実際の移籍金とは異なります。")
+                _cards = [
+                    ("xG/90",    f"{_xg:.3f}"),
+                    ("xA/90",    f"{_xa:.3f}"),
+                    ("CBI/90",   f"{_cbi:.2f}"),
+                    ("Cre/90",   f"{_cre:.1f}"),
+                    ("FPL pts",  f"{_fpl_pts:.0f}"),
+                    ("FPL £M",   f"£{_total_price:.1f}"),
+                ]
+                _card_html = "<div style='display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:6px 0'>"
+                for _lbl, _val in _cards:
+                    _card_html += (
+                        f"<div style='background:var(--surface-1,#f1f5f9);"
+                        f"border:0.5px solid #e2e8f0;border-radius:8px;"
+                        f"padding:8px 4px;text-align:center'>"
+                        f"<div style='font-size:11px;color:#64748b;margin-bottom:2px'>{_lbl}</div>"
+                        f"<div style='font-size:16px;font-weight:600;color:#1a1a2e'>{_val}</div>"
+                        f"</div>"
+                    )
+                _card_html += "</div>"
+                st.markdown(_card_html, unsafe_allow_html=True)
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
