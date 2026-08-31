@@ -447,6 +447,7 @@ def prep_players(df_raw, team_id_map):
         df[c] = pd.to_numeric(df[c] if c in df.columns
                               else pd.Series(0, index=df.index), errors="coerce").fillna(0)
     df["price_m"]      = df["now_cost"] / 10.0
+    df["pts_per_cost"]  = df["total_points"] / df["price_m"].replace(0, np.nan)  # FPL pts/£M
     # 「名前 (チーム)」形式の表示名を追加（同名選手識別用）
     df["display_name"]  = df["player_name"] + " (" + df["team_name"] + ")"
     df["goal_luck"]    = df["goals_scored"] - df["expected_goals"]
@@ -1556,6 +1557,7 @@ else:
         "Def Contribution":("defensive_contribution",      "Defensive contribution score","Defense"),
         "Bonus":          ("bonus",                        "FPL Bonus points",            "FPL"),
         "FPL Points":     ("total_points",                 "Total FPL points",            "FPL"),
+        "Pts/Cost":       ("pts_per_cost",                 "FPL points per £1M (cost efficiency)","FPL"),
         "Price (£M)":     ("price_m",                     "Current FPL price",           "FPL"),
     }
     all_player_labels = list(PLAYER_METRICS.keys())
@@ -1671,7 +1673,7 @@ else:
             )
         with col_b:
             _col_r_raw = PLAYER_METRICS[rank_metric][0]
-            _p90_skip_top = {"price_m","minutes","starts"}
+            _p90_skip_top = {"price_m","pts_per_cost","minutes","starts"}
             # p90変換
             if use_p90_top and _col_r_raw not in _p90_skip_top and not _col_r_raw.endswith("_p90"):
                 col_r, _ = to_p90(_col_r_raw, df_filt)
@@ -1741,7 +1743,7 @@ else:
         with col_b:
             if len(sel_p) >= 2 and len(sel_pm) >= 3:
                 # p90変換（トグルONかつ既にp90でない指標のみ）
-                _p90_skip = {"price_m","minutes","starts",
+                _p90_skip = {"price_m","pts_per_cost","minutes","starts",
                              "xG_p90","xA_p90","xGI_p90","goals_p90","assists_p90",
                              "saves_p90","tackles_p90","recoveries_p90","cbi_p90","def_contribution_p90"}
                 pm_cols = []
@@ -1783,7 +1785,7 @@ else:
             show_n2  = st.slider("表示人数（上位N名）", 10, 100, 30, 5)
             color_by = st.selectbox("色分け", ["position", "team_name"], key="pcol")
         with col_b2:
-            _p90_skip_sc = {"price_m","minutes","starts"}
+            _p90_skip_sc = {"price_m","pts_per_cost","minutes","starts"}
             _px_raw = PLAYER_METRICS[px_label][0]
             _py_raw = PLAYER_METRICS[py_label][0]
             if use_p90_sc and _px_raw not in _p90_skip_sc:
@@ -1855,7 +1857,7 @@ else:
         sel_pcap = st.multiselect("Metrics for PCA (4-8 recommended)", all_player_labels,
                                    default=["xG","xA","Creativity","Threat","Influence","Saves"])
         if len(df_pca_p) >= 5 and len(sel_pcap) >= 3:
-            _p90_skip_pca = {"price_m","minutes","starts"}
+            _p90_skip_pca = {"price_m","pts_per_cost","minutes","starts"}
             pcap_cols = []
             sel_pcap_disp = []
             for m in sel_pcap:
@@ -1969,7 +1971,7 @@ else:
                                   help="共出場時間で割った値で比較します")
 
         if st.button("▶ ユニット比較を実行", type="primary", key="run_unit"):
-            _p90_skip_u = {"price_m","minutes","starts"}
+            _p90_skip_u = {"price_m","pts_per_cost","minutes","starts"}
 
             # GWデータを使って共出場試合を特定
             if df_g_raw is None or "element" not in df_g_raw.columns:
@@ -2416,7 +2418,7 @@ else:
         show_pn = st.radio("Show top N", [10,20,30], horizontal=True, key="pshow")
 
         if st.button("▶  Calculate & Rank", type="primary", key="pcalc"):
-            _p90_skip_c = {"price_m","minutes","starts"}
+            _p90_skip_c = {"price_m","pts_per_cost","minutes","starts"}
             _pcomps_resolved = []
             for r in pcomps:
                 raw_c = r[1]
