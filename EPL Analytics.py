@@ -459,8 +459,18 @@ def prep_players(df_raw, team_id_map):
         df["id"] = range(len(df))  # fallback
     df["position"]    = (df["element_type"] if "element_type" in df.columns
                          else pd.Series(0, index=df.index)).map(POS_MAP).fillna("UNK")
-    df["team_name"]   = (df["team"] if "team" in df.columns
-                         else pd.Series(0, index=df.index)).map(team_id_map).fillna("Unknown")
+    # team列が数値ID → team_id_mapで変換、文字列（チーム名）→ そのまま使用
+    if "team" in df.columns:
+        _team_col = df["team"]
+        _first = _team_col.dropna().iloc[0] if len(_team_col.dropna()) > 0 else 0
+        try:
+            int(_first)  # 数値IDの場合
+            df["team_name"] = pd.to_numeric(_team_col, errors="coerce").map(team_id_map).fillna("Unknown")
+        except (ValueError, TypeError):
+            # 既にチーム名文字列の場合はそのまま
+            df["team_name"] = _team_col.astype(str)
+    else:
+        df["team_name"] = "Unknown"
     for c in NUM_COLS_PLAYER:
         df[c] = pd.to_numeric(df[c] if c in df.columns
                               else pd.Series(0, index=df.index), errors="coerce").fillna(0)
