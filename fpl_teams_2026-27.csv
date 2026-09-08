@@ -1,0 +1,21 @@
+code,id,name,short_name,strength,played,win,draw,loss,points,position
+3,1,Arsenal,ARS,,0,0,0,0,0,2
+7,2,Aston Villa,AVL,,0,0,0,0,0,17
+91,3,Bournemouth,BOU,,0,0,0,0,0,15
+94,4,Brentford,BRE,,0,0,0,0,0,5
+36,5,Brighton,BHA,,0,0,0,0,0,10
+8,6,Chelsea,CHE,,0,0,0,0,0,4
+9,7,Coventry City,COV,,0,0,0,0,0,20
+31,8,Crystal Palace,CRY,,0,0,0,0,0,13
+11,9,Everton,EVE,,0,0,0,0,0,8
+54,10,Fulham,FUL,,0,0,0,0,0,19
+88,11,Hull City,HUL,,0,0,0,0,0,3
+40,12,Ipswich Town,IPS,,0,0,0,0,0,14
+2,13,Leeds,LEE,,0,0,0,0,0,9
+14,14,Liverpool,LIV,,0,0,0,0,0,6
+43,15,Man City,MCI,,0,0,0,0,0,1
+1,16,Man Utd,MUN,,0,0,0,0,0,11
+4,17,Newcastle,NEW,,0,0,0,0,0,7
+17,18,Nott'm Forest,NFO,,0,0,0,0,0,16
+6,19,Spurs,TOT,,0,0,0,0,0,18
+56,20,Sunderland,SUN,,0,0,0,0,0,12
