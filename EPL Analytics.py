@@ -414,14 +414,11 @@ def load_season(season):
         pass
 
     def _try_fpl(filename):
-        """自リポジトリ直下のFPL取得ファイル → vaastav の順に試みる"""
-        if _my_base:
-            # リポジトリ直下に {filename}_{season}.csv として保存されている想定
-            _base_url = _my_base.rsplit("/fpl_data/", 1)[0]
-            r = _get(f"{_base_url}/fpl_{filename}_{season}.csv")
-            if r:
-                return r
-        return None
+        """自リポジトリ直下の fpl_{filename}_{season}.csv を試みる"""
+        if not (_u and _r):
+            return None
+        _url = f"https://raw.githubusercontent.com/{_u}/{_r}/main/fpl_{filename}_{season}.csv"
+        return _get(_url)
 
     # 自リポジトリ優先、なければvaastav
     r_p = _try_fpl("players_raw") or _get(f"{VAASTAV}/{season}/players_raw.csv")
