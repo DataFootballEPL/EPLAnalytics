@@ -403,9 +403,30 @@ def _get(url, timeout=30):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_season(season):
-    r_p = _get(f"{VAASTAV}/{season}/players_raw.csv")
-    r_g = _get(f"{VAASTAV}/{season}/gws/merged_gw.csv")
-    r_t = _get(f"{VAASTAV}/{season}/teams.csv")
+    # 自分のGitHubリポジトリにデータがあればそちらを優先（FPL直接取得分）
+    _my_base = None
+    try:
+        _u = st.secrets.get("GITHUB_USER", "")
+        _r = st.secrets.get("GITHUB_REPO", "")
+        if _u and _r:
+            _my_base = f"https://raw.githubusercontent.com/{_u}/{_r}/main/fpl_data/{season}"
+    except Exception:
+        pass
+
+    def _try_fpl(filename):
+        """自リポジトリ直下のFPL取得ファイル → vaastav の順に試みる"""
+        if _my_base:
+            # リポジトリ直下に {filename}_{season}.csv として保存されている想定
+            _base_url = _my_base.rsplit("/fpl_data/", 1)[0]
+            r = _get(f"{_base_url}/fpl_{filename}_{season}.csv")
+            if r:
+                return r
+        return None
+
+    # 自リポジトリ優先、なければvaastav
+    r_p = _try_fpl("players_raw") or _get(f"{VAASTAV}/{season}/players_raw.csv")
+    r_g = _try_fpl("merged_gw")   or _get(f"{VAASTAV}/{season}/gws/merged_gw.csv")
+    r_t = _try_fpl("teams")       or _get(f"{VAASTAV}/{season}/teams.csv")
     return (
         pd.read_csv(io.StringIO(r_p.text)) if r_p else None,
         pd.read_csv(io.StringIO(r_g.text)) if r_g else None,
