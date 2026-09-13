@@ -377,7 +377,7 @@ if df_plot.empty:
     st.stop()
 
 # メインタブ
-tab_line, tab_scatter_tab, tab_burnout, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 息切れ分析", "📊 数値テーブル", "📖 読み方"])
+tab_line, tab_scatter_tab, tab_burnout, tab_rank, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 息切れ分析", "🏆 息切れランキング", "📊 数値テーブル", "📖 読み方"])
 
 with tab_line:
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -811,6 +811,144 @@ with tab_burnout:
                         _df_show.round(3).style.background_gradient(subset=["Burnout score"], cmap="RdYlGn"),
                         use_container_width=True, hide_index=True
                     )
+
+with tab_rank:
+    st.markdown("## 🏆 息切れランキング")
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.caption("複数シーズン・複数指標の息切れスコアをまとめて表示。監督交代チームを除外して比較できます。")
+
+    col_r1, col_r2 = st.columns([1, 2])
+    with col_r1:
+        rank_seasons = st.multiselect("シーズン（複数選択可）", list(SEASONS.keys()),
+                                       default=list(SEASONS.keys())[:2], key="rank_seasons")
+        rank_split   = st.slider("前後半の区切りGW", 10, 25, 19, key="rank_split")
+        rank_exclude = {}
+        with st.expander("除外チーム設定（監督交代等）", expanded=False):
+            for _rs in rank_seasons:
+                _dg_rs = load_vaastav(_rs)
+                if _dg_rs is not None:
+                    _teams_rs = sorted(_dg_rs["team"].dropna().unique().tolist())
+                    _ex = st.multiselect(f"{_rs}", _teams_rs, key=f"rank_ex_{_rs}")
+                    rank_exclude[_rs] = _ex
+
+    with col_r2:
+        if not rank_seasons:
+            st.info("シーズンを選択してください")
+        else:
+            all_burnout_rows = []
+
+            for _rs in rank_seasons:
+                _dg_rs = load_vaastav(_rs)
+                if _dg_rs is None:
+                    continue
+
+                _dg_rs = _dg_rs.copy()
+                for c in ["expected_goals","expected_goals_conceded"]:
+                    if c in _dg_rs.columns:
+                        _dg_rs[c] = pd.to_numeric(_dg_rs[c], errors="coerce").fillna(0)
+                _dg_rs["was_home"] = _dg_rs["was_home"].fillna(False).astype(bool)
+                _dg_rs["gf"] = np.where(_dg_rs["was_home"],
+                                         pd.to_numeric(_dg_rs["team_h_score"], errors="coerce"),
+                                         pd.to_numeric(_dg_rs["team_a_score"], errors="coerce"))
+                _dg_rs["ga"] = np.where(_dg_rs["was_home"],
+                                         pd.to_numeric(_dg_rs["team_a_score"], errors="coerce"),
+                                         pd.to_numeric(_dg_rs["team_h_score"], errors="coerce"))
+
+                _fix_rs = _dg_rs.groupby(["team","GW","fixture"]).agg(
+                    gf=("gf","first"), ga=("ga","first")
+                ).reset_index()
+                _fix_rs["pts"] = np.where(_fix_rs["gf"]>_fix_rs["ga"],3,
+                                  np.where(_fix_rs["gf"]==_fix_rs["ga"],1,0))
+
+                _gw_max_rs = int(_fix_rs["GW"].max())
+                _n1 = rank_split
+                _n2 = max(_gw_max_rs - rank_split, 1)
+
+                _df_rs = _fix_rs.groupby("team").apply(
+                    lambda g: pd.Series({
+                        "first_pts":  g[g["GW"]<=rank_split]["pts"].sum(),
+                        "second_pts": g[g["GW"]> rank_split]["pts"].sum(),
+                        "total_pts":  g["pts"].sum(),
+                    })
+                ).reset_index()
+                _df_rs["first_ppm"]  = _df_rs["first_pts"]  / _n1
+                _df_rs["second_ppm"] = _df_rs["second_pts"] / _n2
+                _df_rs["burnout"]    = _df_rs["second_ppm"] - _df_rs["first_ppm"]
+                _df_rs["season"]     = _rs
+
+                # 除外チームを除く
+                _ex_rs = rank_exclude.get(_rs, [])
+                if _ex_rs:
+                    _df_rs = _df_rs[~_df_rs["team"].isin(_ex_rs)]
+
+                all_burnout_rows.append(_df_rs)
+
+            if not all_burnout_rows:
+                st.warning("データがありません")
+            else:
+                df_all = pd.concat(all_burnout_rows, ignore_index=True)
+
+                # ── 表示オプション ──
+                view_mode = st.radio("表示形式", ["シーズン別平均", "全エントリ（チーム×シーズン）"],
+                                      horizontal=True, key="rank_view")
+
+                if view_mode == "シーズン別平均":
+                    df_disp = (df_all.groupby("team")
+                               .agg(burnout_avg=("burnout","mean"),
+                                    total_pts_avg=("total_pts","mean"),
+                                    n_seasons=("season","count"))
+                               .reset_index()
+                               .sort_values("burnout_avg"))
+                    df_disp.columns = ["チーム","息切れ度(平均)","最終勝ち点(平均)","対象シーズン数"]
+                else:
+                    df_disp = df_all[["team","season","burnout","first_ppm","second_ppm","total_pts"]].copy()
+                    df_disp.columns = ["チーム","シーズン","息切れ度","前半pts/M","後半pts/M","最終勝ち点"]
+                    df_disp = df_disp.sort_values(["チーム","シーズン"])
+
+                # ── 棒グラフ ──
+                fig_r, ax_r = plt.subplots(figsize=(8, max(4, len(df_disp)*0.42)))
+                fig_r.patch.set_facecolor("#ffffff")
+                ax_r.set_facecolor("#f8f9fa")
+                ax_r.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
+                ax_r.axvline(0, color="#94a3b8", lw=1.2, ls="--", alpha=0.7)
+
+                _burnout_col = "息切れ度(平均)" if view_mode == "シーズン別平均" else "息切れ度"
+                _label_col   = "チーム" if view_mode == "シーズン別平均" else df_disp.apply(
+                    lambda row: f"{row['チーム']} ({row['シーズン']})", axis=1)
+
+                _vals  = df_disp[_burnout_col].values
+                _labels = _label_col if isinstance(_label_col, list) else df_disp[_burnout_col.split("(")[0].strip()+"チーム"[0:0]].values
+                if view_mode == "全エントリ（チーム×シーズン）":
+                    _labels = df_disp.apply(lambda r: f"{r['チーム']} ({r['シーズン']})", axis=1).values
+                else:
+                    _labels = df_disp["チーム"].values
+
+                _colors = ["#ef4444" if v < 0 else "#3b82f6" for v in _vals]
+                ax_r.barh(range(len(_vals)), _vals, color=_colors, alpha=0.85,
+                           edgecolor="#555555", lw=0.3)
+                ax_r.set_yticks(range(len(_labels)))
+                ax_r.set_yticklabels(_labels, fontsize=8.5, color="#1a1a2e")
+                ax_r.set_xlabel("Burnout score (2nd half - 1st half pts/match)",
+                                 color="#333333", fontsize=9)
+                _title = f"Burnout Ranking  GW split={rank_split}"
+                if any(rank_exclude.values()):
+                    _n_ex = sum(len(v) for v in rank_exclude.values())
+                    _title += f"  ({_n_ex} team-seasons excluded)"
+                ax_r.set_title(_title, color="#1a1a2e", fontweight="bold", fontsize=10)
+                for spine in ax_r.spines.values():
+                    spine.set_color("#cccccc")
+                plt.tight_layout()
+                st.pyplot(fig_r, use_container_width=True)
+
+                st.caption("Blue = 2nd half improvement, Red = burnout. "
+                           "Excludes seasons with mid-season manager changes if specified above.")
+
+                # ── 数値テーブル ──
+                st.dataframe(
+                    df_disp.round(3).style.background_gradient(
+                        subset=[_burnout_col], cmap="RdYlGn"),
+                    use_container_width=True, hide_index=True
+                )
 
 with tab_table:
     # Spearman rも追加
