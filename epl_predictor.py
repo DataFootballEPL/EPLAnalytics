@@ -620,6 +620,9 @@ with tab_burnout:
             "Creativity/M":          ("creativity",  "vaastav"),
             "Threat/M":              ("threat",      "vaastav"),
             "Yellow+Red Cards/M":    ("cards",       "vaastav"),
+            "Goal Luck/M":           ("goal_luck",   "vaastav"),
+            "Def Luck/M":            ("def_luck",    "vaastav"),
+            "Total Luck/M":          ("total_luck",  "vaastav"),
             "Possession % ⚡":        ("possession",  "apf"),
             "Pass Accuracy % ⚡":     ("pass_acc",    "apf"),
             "Fouls/M ⚡":             ("fouls",       "apf"),
@@ -712,11 +715,23 @@ with tab_burnout:
                     _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].mean().reset_index()
                     _x_vals = _fw2.groupby("team")["expected_goals_conceded"].mean().reset_index(name="x_val")
                 else:
-                    _raw_map = {"xG":"expected_goals","creativity":"creativity","threat":"threat"}
-                    _raw_c = _raw_map.get(_metric_col, _metric_col)
-                    # 選手ごとのGW別合計 → チームのGW合計 → 前半戦平均
-                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])[_raw_c].sum().reset_index()
-                    _x_vals = _fw2.groupby("team")[_raw_c].mean().reset_index(name="x_val")
+                    if _metric_col in ("goal_luck", "def_luck", "total_luck"):
+                        # Luck系: (goals - xG) / (xGC - goals_conceded) をチーム×GWで計算
+                        _gl = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"]).agg(
+                            goals=("goals_scored","sum"),
+                            xg=("expected_goals","sum"),
+                            ga_sum=("goals_conceded","sum"),
+                            xgc=("expected_goals_conceded","mean"),
+                        ).reset_index()
+                        _gl["goal_luck"]  = _gl["goals"] - _gl["xg"]
+                        _gl["def_luck"]   = _gl["xgc"]  - _gl["ga_sum"]
+                        _gl["total_luck"] = _gl["goal_luck"] + _gl["def_luck"]
+                        _x_vals = _gl.groupby("team")[_metric_col].mean().reset_index(name="x_val")
+                    else:
+                        _raw_map = {"xG":"expected_goals","creativity":"creativity","threat":"threat"}
+                        _raw_c = _raw_map.get(_metric_col, _metric_col)
+                        _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])[_raw_c].sum().reset_index()
+                        _x_vals = _fw2.groupby("team")[_raw_c].mean().reset_index(name="x_val")
             else:
                 _apf_b = load_apf(b_season, _repo_user, _repo_name)
                 if _apf_b.empty:
