@@ -617,6 +617,9 @@ with tab_burnout:
             "xGC/M (GK only)":       ("xGC_gk",      "vaastav"),
             "Net xG/M (GK method)":  ("net_xG_gk",   "vaastav"),
             "Recoveries/M":          ("recoveries",  "vaastav"),
+            "Squad depth (855min+)":  ("turnover_855", "vaastav"),
+            "Squad depth (1140min+)": ("turnover_1140","vaastav"),
+            "Squad depth (1530min+)": ("turnover_1530","vaastav"),
             "Goals/M":               ("gf",          "vaastav"),
             "Creativity/M":          ("creativity",  "vaastav"),
             "Threat/M":              ("threat",      "vaastav"),
@@ -716,7 +719,13 @@ with tab_burnout:
                     _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].mean().reset_index()
                     _x_vals = _fw2.groupby("team")["expected_goals_conceded"].mean().reset_index(name="x_val")
                 else:
-                    if _metric_col in ("xGC_gk", "net_xG_gk"):
+                    if _metric_col.startswith("turnover_"):
+                        _tv_min = int(_metric_col.split("_")[1])
+                        _fw_tv = _dg_b[_dg_b["GW"]<=split_gw].groupby(
+                            ["team","element"])["minutes"].sum().reset_index()
+                        _x_vals = (_fw_tv[_fw_tv["minutes"]>=_tv_min]
+                                   .groupby("team").size().reset_index(name="x_val"))
+                    elif _metric_col in ("xGC_gk", "net_xG_gk"):
                         # GKのみのxGCを使う（EPL Analytics方式）→ 重複カウントを避ける
                         _gk = _dg_b[(_dg_b["GW"]<=split_gw) &
                                      (_dg_b["position"].isin(["GK","GKP"]) if "position" in _dg_b.columns
@@ -837,10 +846,11 @@ with tab_burnout:
                            color="#1a1a2e",
                            bbox=dict(boxstyle="round,pad=0.3",fc="#ffffffcc",ec="#cccccc"))
 
-                ax_b.set_xlabel(f"First half (GW1-{split_gw}): {x_metric}", color="#333333", fontsize=10)
+                _xlabel = x_metric.replace("主力選手数","Squad depth").replace("分以上","min+").replace("以上","+")
+                ax_b.set_xlabel(f"First half (GW1-{split_gw}): {_xlabel}", color="#333333", fontsize=10)
                 ax_b.set_ylabel("Burnout score (2nd half pts/match - 1st half pts/match)", color="#333333", fontsize=10)
                 ax_b.set_title(
-                    f"{b_season}  {x_metric} vs Burnout score"
+                    f"{b_season}  {_xlabel} vs Burnout score"
                     + (f"  ({len(exclude_teams)} teams excluded)" if exclude_teams else ""),
                     color="#1a1a2e", fontweight="bold", fontsize=11)
                 for spine in ax_b.spines.values():
