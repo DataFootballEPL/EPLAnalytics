@@ -617,9 +617,7 @@ with tab_burnout:
             "xGC/M (GK only)":       ("xGC_gk",      "vaastav"),
             "Net xG/M (GK method)":  ("net_xG_gk",   "vaastav"),
             "Recoveries/M":          ("recoveries",  "vaastav"),
-            "Squad depth (855min+)":  ("turnover_855", "vaastav"),
-            "Squad depth (1140min+)": ("turnover_1140","vaastav"),
-            "Squad depth (1530min+)": ("turnover_1530","vaastav"),
+            "Squad depth (custom)":   ("turnover_custom","vaastav"),
             "Goals/M":               ("gf",          "vaastav"),
             "Creativity/M":          ("creativity",  "vaastav"),
             "Threat/M":              ("threat",      "vaastav"),
@@ -639,6 +637,14 @@ with tab_burnout:
         }
 
         x_metric = st.selectbox("X軸指標（前半戦）", list(BURNOUT_METRICS.keys()), key="b_xmetric")
+        custom_min_min = None
+        if BURNOUT_METRICS.get(x_metric, ("",""))[0] == "turnover_custom":
+            custom_min_min = st.slider("最低出場分数", 90, 3000, 500, 90, key="b_tv_min",
+                                        help="前半戦でこの分数以上出場した選手数をX軸に使います。\n"
+                                             "例: 500分 ≈ 19試合の約26分/試合相当\n"
+                                             "    855分 ≈ 19試合の半分以上出場\n"
+                                             "    1530分 ≈ ほぼ全試合出場")
+            st.caption(f"現在: GW1-{split_gw}で{custom_min_min}分以上出場した選手数")
 
         use_turnover = st.toggle("主力選手数を指標に使用", value=False, key="b_turnover",
                                   help="前半戦に一定分数以上出場した選手数（ターンオーバーの少なさ）")
@@ -719,8 +725,8 @@ with tab_burnout:
                     _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].mean().reset_index()
                     _x_vals = _fw2.groupby("team")["expected_goals_conceded"].mean().reset_index(name="x_val")
                 else:
-                    if _metric_col.startswith("turnover_"):
-                        _tv_min = int(_metric_col.split("_")[1])
+                    if _metric_col == "turnover_custom":
+                        _tv_min = custom_min_min or 500
                         _fw_tv = _dg_b[_dg_b["GW"]<=split_gw].groupby(
                             ["team","element"])["minutes"].sum().reset_index()
                         _x_vals = (_fw_tv[_fw_tv["minutes"]>=_tv_min]
@@ -846,7 +852,8 @@ with tab_burnout:
                            color="#1a1a2e",
                            bbox=dict(boxstyle="round,pad=0.3",fc="#ffffffcc",ec="#cccccc"))
 
-                _xlabel = x_metric.replace("主力選手数","Squad depth").replace("分以上","min+").replace("以上","+")
+                _tv_label = f"(>={custom_min_min}min)" if custom_min_min else ""
+                _xlabel = x_metric.replace("Squad depth (custom)", f"Squad depth {_tv_label}")
                 ax_b.set_xlabel(f"First half (GW1-{split_gw}): {_xlabel}", color="#333333", fontsize=10)
                 ax_b.set_ylabel("Burnout score (2nd half pts/match - 1st half pts/match)", color="#333333", fontsize=10)
                 ax_b.set_title(
