@@ -117,12 +117,16 @@ def load_apf(season_str: str, repo_user: str, repo_name: str) -> pd.DataFrame:
                 continue
             tname = APF_NAME_MAP.get(s["team_name"], s["team_name"])
             rows.append({
-                "team": tname, "GW": gw,
+                "team":            tname,
+                "GW":              gw,
                 "shots_on_tgt":    s.get("Shots on Goal"),
                 "total_shots":     s.get("Total Shots"),
                 "shots_inbox":     s.get("Shots insidebox"),
                 "possession":      s.get("Ball Possession"),
                 "shots_on_tgt_ag": o.get("Shots on Goal"),
+                "fouls":           s.get("Fouls"),
+                "corners":         s.get("Corner Kicks"),
+                "pass_accuracy":   s.get("Passes %"),
             })
     if not rows:
         return pd.DataFrame()
@@ -692,7 +696,8 @@ with tab_burnout:
             elif _metric_src == "vaastav":
                 if _metric_col == "cards":
                     _dg_b["_cards"] = _dg_b["yellow_cards"] + _dg_b["red_cards"]*2
-                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["_cards"].first().reset_index()
+                    # fixture単位で選手ごとに合算（ファウルカードは選手ごとに記録）
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])["_cards"].sum().reset_index()
                     _x_vals = _fw2.groupby("team")["_cards"].sum().div(_n_first).reset_index(name="x_val")
                 elif _metric_col == "net_xG":
                     _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby("team").agg(
@@ -703,13 +708,15 @@ with tab_burnout:
                     _fw2 = _fix_b[_fix_b["GW"]<=split_gw].groupby("team")["gf"].sum().div(_n_first).reset_index(name="x_val")
                     _x_vals = _fw2
                 elif _metric_col == "xGC":
-                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].first().reset_index()
-                    _x_vals = _fw2.groupby("team")["expected_goals_conceded"].sum().div(_n_first).reset_index(name="x_val")
+                    # xGC: 選手が出場した間のチーム被xG → fixture単位でfirstではなく選手ごとにsumしてから試合ごとに平均
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].mean().reset_index()
+                    _x_vals = _fw2.groupby("team")["expected_goals_conceded"].mean().reset_index(name="x_val")
                 else:
                     _raw_map = {"xG":"expected_goals","creativity":"creativity","threat":"threat"}
                     _raw_c = _raw_map.get(_metric_col, _metric_col)
-                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])[_raw_c].first().reset_index()
-                    _x_vals = _fw2.groupby("team")[_raw_c].sum().div(_n_first).reset_index(name="x_val")
+                    # 選手ごとのGW別合計 → チームのGW合計 → 前半戦平均
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])[_raw_c].sum().reset_index()
+                    _x_vals = _fw2.groupby("team")[_raw_c].mean().reset_index(name="x_val")
             else:
                 _apf_b = load_apf(b_season, _repo_user, _repo_name)
                 if _apf_b.empty:
