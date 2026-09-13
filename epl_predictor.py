@@ -741,15 +741,30 @@ with tab_burnout:
                         _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])["recoveries"].sum().reset_index()
                         _x_vals = _fw2.groupby("team")["recoveries"].mean().reset_index(name="x_val")
                     elif _metric_col in ("goal_luck", "def_luck", "total_luck"):
-                        # Luck系: (goals - xG) / (xGC - goals_conceded) をチーム×GWで計算
-                        _gl = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"]).agg(
-                            goals=("goals_scored","sum"),
-                            xg=("expected_goals","sum"),
-                            ga_sum=("goals_conceded","sum"),
-                            xgc=("expected_goals_conceded","mean"),
-                        ).reset_index()
-                        _gl["goal_luck"]  = _gl["goals"] - _gl["xg"]
-                        _gl["def_luck"]   = _gl["xgc"]  - _gl["ga_sum"]
+                        # xG: 全選手合算でOK
+                        _gl_xg = (_dg_b[_dg_b["GW"]<=split_gw]
+                                  .groupby(["team","GW"])["expected_goals"].sum().reset_index())
+                        # 得失点: fixture単位でfirst
+                        _gl_score = (_dg_b[_dg_b["GW"]<=split_gw]
+                                     .groupby(["team","GW","fixture"])
+                                     .agg(goals=("goals_scored","first"),
+                                          ga=("goals_conceded","first")).reset_index()
+                                     .groupby(["team","GW"])
+                                     .agg(goals=("goals","sum"), ga=("ga","sum")).reset_index())
+                        # xGC: GKのみ（重複カウント回避）
+                        _pos_col = "position" if "position" in _dg_b.columns else None
+                        if _pos_col:
+                            _gk2 = _dg_b[(_dg_b["GW"]<=split_gw) & (_dg_b[_pos_col].isin(["GK","GKP"]))]
+                        else:
+                            _gk2 = _dg_b[(_dg_b["GW"]<=split_gw) & (_dg_b.get("element_type",pd.Series())==1)]
+                        if _gk2.empty:
+                            _gk2 = _dg_b[_dg_b["GW"]<=split_gw]
+                        _gl_xgc = (_gk2.groupby(["team","GW"])["expected_goals_conceded"]
+                                   .sum().reset_index().rename(columns={"expected_goals_conceded":"xgc"}))
+                        _gl = (_gl_xg.merge(_gl_score, on=["team","GW"], how="inner")
+                                     .merge(_gl_xgc,   on=["team","GW"], how="left"))
+                        _gl["goal_luck"]  = _gl["goals"] - _gl["expected_goals"]
+                        _gl["def_luck"]   = _gl["xgc"]  - _gl["ga"]
                         _gl["total_luck"] = _gl["goal_luck"] + _gl["def_luck"]
                         _x_vals = _gl.groupby("team")[_metric_col].mean().reset_index(name="x_val")
                     else:
