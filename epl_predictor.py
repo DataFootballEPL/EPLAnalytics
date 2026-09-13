@@ -718,24 +718,29 @@ with tab_burnout:
                 else:
                     _gw_col_apf = "GW" if "GW" in _apf_b.columns else "gw" if "gw" in _apf_b.columns else None
                     _apf_fw = _apf_b[_apf_b[_gw_col_apf]<=split_gw] if _gw_col_apf else _apf_b
-                    _apf_col = {"possession":"possession_pct","pass_acc":"pass_accuracy",
-                                "fouls":"fouls","shots_on_tgt":"shots_on_target",
-                                "total_shots":"total_shots","shots_ag":"shots_against",
+                    _apf_col = {"possession":"possession","pass_acc":"pass_accuracy",
+                                "fouls":"fouls","shots_on_tgt":"shots_on_tgt",
+                                "total_shots":"total_shots","shots_ag":"shots_on_tgt_ag",
                                 "corners":"corners"}
                     if _metric_col in ("shot_conv","sot_rate"):
-                        _gv = _apf_fw.groupby("team_name").agg(
-                            sot=("shots_on_target","sum"),tot=("total_shots","sum")).reset_index()
+                        _gv = _apf_fw.groupby("team").agg(
+                            sot=("shots_on_tgt","sum"),tot=("total_shots","sum")).reset_index()
                         _gv["x_val"] = _gv["sot"]/(_gv["tot"].clip(lower=1))*100
-                        _x_vals = _gv[["team_name","x_val"]].rename(columns={"team_name":"team"})
-                        # vaastav側のチーム名と合わせる（APF_NAME_MAP適用済み想定）
+                        _x_vals = _gv[["team","x_val"]]
                     else:
                         _rc = _apf_col.get(_metric_col,"")
                         if _rc and _rc in _apf_fw.columns:
-                            _x_vals = _apf_fw.groupby("team_name")[_rc].mean().reset_index()
+                            _x_vals = _apf_fw.groupby("team")[_rc].mean().reset_index()
                             _x_vals.columns = ["team","x_val"]
                         else:
                             _x_vals = pd.DataFrame(columns=["team","x_val"])
 
+            # デバッグ: チーム名の一致確認
+            _pts_teams = set(_df_pts["team"].tolist())
+            _x_teams   = set(_x_vals["team"].tolist()) if not _x_vals.empty else set()
+            _unmatched  = _pts_teams - _x_teams
+            if _unmatched and not _x_vals.empty:
+                st.caption(f"DEBUG: unmatched teams = {sorted(_unmatched)[:5]}")
             _df_plot = _df_pts.merge(_x_vals, on="team", how="inner")
             if exclude_teams:
                 _df_plot = _df_plot[~_df_plot["team"].isin(exclude_teams)]
