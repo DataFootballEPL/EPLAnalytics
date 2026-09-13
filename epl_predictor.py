@@ -373,7 +373,7 @@ if df_plot.empty:
     st.stop()
 
 # メインタブ
-tab_line, tab_scatter_tab, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📊 数値テーブル", "📖 読み方"])
+tab_line, tab_scatter_tab, tab_burnout, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 息切れ分析", "📊 数値テーブル", "📖 読み方"])
 
 with tab_line:
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -592,6 +592,211 @@ with tab_scatter_tab:
                 c3.metric("p-value", f"{p_val:.3f}",
                            delta="significant" if p_val < 0.05 else "not significant",
                            delta_color="normal" if p_val < 0.05 else "off")
+
+with tab_burnout:
+    st.markdown("## 📉 息切れ分析（前半戦 vs 後半戦）")
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.caption(
+        "前半戦（GW1-N）の指標を「プレッシング強度・スタイルの代理変数」として、"
+        "後半戦との勝ち点変化（息切れ度）との相関を分析します。"
+    )
+
+    col_b1, col_b2 = st.columns([1, 2])
+    with col_b1:
+        b_season = st.selectbox("シーズン", list(SEASONS.keys()), key="b_season")
+        split_gw = st.slider("前後半の区切りGW", 10, 25, 19, key="b_split",
+                              help="この節以前を前半戦、以降を後半戦として計算します")
+
+        st.markdown("**前半戦の指標（横軸）**")
+        BURNOUT_METRICS = {
+            "xG/M":                  ("xG",          "vaastav"),
+            "xGC/M":                 ("xGC",         "vaastav"),
+            "Net xG/M":              ("net_xG",      "vaastav"),
+            "Goals/M":               ("gf",          "vaastav"),
+            "Creativity/M":          ("creativity",  "vaastav"),
+            "Threat/M":              ("threat",      "vaastav"),
+            "Yellow+Red Cards/M":    ("cards",       "vaastav"),
+            "Possession % ⚡":        ("possession",  "apf"),
+            "Pass Accuracy % ⚡":     ("pass_acc",    "apf"),
+            "Fouls/M ⚡":             ("fouls",       "apf"),
+            "Shot Conversion % ⚡":   ("shot_conv",   "apf"),
+            "Shots on Tgt Rate % ⚡": ("sot_rate",    "apf"),
+            "Total Shots/M ⚡":       ("total_shots", "apf"),
+            "Shots on Tgt/M ⚡":      ("shots_on_tgt","apf"),
+            "Shots Against/M ⚡":     ("shots_ag",    "apf"),
+            "Corners/M ⚡":           ("corners",     "apf"),
+        }
+
+        x_metric = st.selectbox("X軸指標（前半戦）", list(BURNOUT_METRICS.keys()), key="b_xmetric")
+
+        use_turnover = st.toggle("主力選手数を指標に使用", value=False, key="b_turnover",
+                                  help="前半戦に一定分数以上出場した選手数（ターンオーバーの少なさ）")
+        if use_turnover:
+            min_minutes = st.slider("最低出場分数", 300, 1500, 855, 90, key="b_minmin",
+                                     help="855分 ≈ 前半戦19試合の半分以上出場")
+            x_metric = f"主力選手数（{min_minutes}分以上）"
+            BURNOUT_METRICS[x_metric] = ("turnover", "vaastav")
+
+        st.markdown("**除外チーム（監督交代など）**")
+        _dg_b = load_vaastav(b_season)
+        _all_teams_b = sorted(_dg_b["team"].dropna().unique().tolist()) if _dg_b is not None else []
+        exclude_teams = st.multiselect("除外するチーム", _all_teams_b, key="b_exclude")
+
+    with col_b2:
+        if _dg_b is None:
+            st.warning("データを読み込めませんでした")
+        else:
+            _dg_b = _dg_b.copy()
+            for c in ["expected_goals","expected_goals_conceded","creativity","threat","yellow_cards","red_cards"]:
+                if c in _dg_b.columns:
+                    _dg_b[c] = pd.to_numeric(_dg_b[c], errors="coerce").fillna(0)
+            _dg_b["was_home"] = _dg_b["was_home"].fillna(False).astype(bool)
+            _dg_b["gf"] = np.where(_dg_b["was_home"],
+                                    pd.to_numeric(_dg_b["team_h_score"], errors="coerce"),
+                                    pd.to_numeric(_dg_b["team_a_score"], errors="coerce"))
+            _dg_b["ga"] = np.where(_dg_b["was_home"],
+                                    pd.to_numeric(_dg_b["team_a_score"], errors="coerce"),
+                                    pd.to_numeric(_dg_b["team_h_score"], errors="coerce"))
+
+            # fixture単位で勝ち点
+            _fix_b = _dg_b.groupby(["team","GW","fixture"]).agg(
+                gf=("gf","first"), ga=("ga","first")
+            ).reset_index()
+            _fix_b["pts"] = np.where(_fix_b["gf"]>_fix_b["ga"],3,
+                            np.where(_fix_b["gf"]==_fix_b["ga"],1,0))
+
+            _gw_max   = int(_fix_b["GW"].max())
+            _n_first  = split_gw
+            _n_second = max(_gw_max - split_gw, 1)
+
+            _df_pts = _fix_b.groupby("team").apply(
+                lambda g: pd.Series({
+                    "first_pts":  g[g["GW"]<=split_gw]["pts"].sum(),
+                    "second_pts": g[g["GW"]> split_gw]["pts"].sum(),
+                    "total_pts":  g["pts"].sum(),
+                })
+            ).reset_index()
+            _df_pts["first_ppm"]  = _df_pts["first_pts"]  / _n_first
+            _df_pts["second_ppm"] = _df_pts["second_pts"] / _n_second
+            _df_pts["burnout"]    = _df_pts["second_ppm"] - _df_pts["first_ppm"]
+
+            if exclude_teams:
+                _df_pts = _df_pts[~_df_pts["team"].isin(exclude_teams)]
+
+            # X軸値の計算
+            _metric_col, _metric_src = BURNOUT_METRICS.get(x_metric, ("xG","vaastav"))
+
+            if _metric_col == "turnover":
+                _fw = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","element"])["minutes"].sum().reset_index()
+                _x_vals = _fw[_fw["minutes"]>=min_minutes].groupby("team").size().reset_index(name="x_val")
+            elif _metric_src == "vaastav":
+                if _metric_col == "cards":
+                    _dg_b["_cards"] = _dg_b["yellow_cards"] + _dg_b["red_cards"]*2
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["_cards"].first().reset_index()
+                    _x_vals = _fw2.groupby("team")["_cards"].sum().div(_n_first).reset_index(name="x_val")
+                elif _metric_col == "net_xG":
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby("team").agg(
+                        xg=("expected_goals","sum"),xgc=("expected_goals_conceded","sum")).reset_index()
+                    _fw2["x_val"] = (_fw2["xg"]-_fw2["xgc"])/_n_first
+                    _x_vals = _fw2[["team","x_val"]]
+                elif _metric_col == "gf":
+                    _fw2 = _fix_b[_fix_b["GW"]<=split_gw].groupby("team")["gf"].sum().div(_n_first).reset_index(name="x_val")
+                    _x_vals = _fw2
+                elif _metric_col == "xGC":
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].first().reset_index()
+                    _x_vals = _fw2.groupby("team")["expected_goals_conceded"].sum().div(_n_first).reset_index(name="x_val")
+                else:
+                    _raw_map = {"xG":"expected_goals","creativity":"creativity","threat":"threat"}
+                    _raw_c = _raw_map.get(_metric_col, _metric_col)
+                    _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])[_raw_c].first().reset_index()
+                    _x_vals = _fw2.groupby("team")[_raw_c].sum().div(_n_first).reset_index(name="x_val")
+            else:
+                _apf_b = load_apf(b_season, _repo_user, _repo_name)
+                if _apf_b.empty:
+                    st.warning("⚡指標はAPI-Football JSONが必要です")
+                    _x_vals = pd.DataFrame(columns=["team","x_val"])
+                else:
+                    _apf_fw = _apf_b[_apf_b["GW"]<=split_gw] if "GW" in _apf_b.columns else _apf_b
+                    _apf_col = {"possession":"possession_pct","pass_acc":"pass_accuracy",
+                                "fouls":"fouls","shots_on_tgt":"shots_on_target",
+                                "total_shots":"total_shots","shots_ag":"shots_against",
+                                "corners":"corners"}
+                    if _metric_col in ("shot_conv","sot_rate"):
+                        _gv = _apf_fw.groupby("team_name").agg(
+                            sot=("shots_on_target","sum"),tot=("total_shots","sum")).reset_index()
+                        _gv["x_val"] = _gv["sot"]/(_gv["tot"].clip(lower=1))*100
+                        _x_vals = _gv[["team_name","x_val"]].rename(columns={"team_name":"team"})
+                    else:
+                        _rc = _apf_col.get(_metric_col,"")
+                        if _rc and _rc in _apf_fw.columns:
+                            _x_vals = _apf_fw.groupby("team_name")[_rc].mean().reset_index()
+                            _x_vals.columns = ["team","x_val"]
+                        else:
+                            _x_vals = pd.DataFrame(columns=["team","x_val"])
+
+            _df_plot = _df_pts.merge(_x_vals, on="team", how="inner")
+            if exclude_teams:
+                _df_plot = _df_plot[~_df_plot["team"].isin(exclude_teams)]
+
+            if len(_df_plot) < 4:
+                st.warning("データが不足しています")
+            else:
+                from scipy.stats import linregress as _linreg
+                _x = _df_plot["x_val"].fillna(0).values.astype(float)
+                _y = _df_plot["burnout"].values.astype(float)
+
+                fig_b, ax_b = plt.subplots(figsize=(8, 5.5))
+                fig_b.patch.set_facecolor("#ffffff")
+                ax_b.set_facecolor("#f8f9fa")
+                ax_b.grid(color="#e0e0e0", lw=0.5, zorder=0)
+                ax_b.axhline(0, color="#94a3b8", lw=1.2, ls="--", alpha=0.7)
+
+                _cols_b = ["#ef4444" if v < 0 else "#3b82f6" for v in _y]
+                ax_b.scatter(_x, _y, c=_cols_b, s=90, zorder=3,
+                              edgecolors="#555555", lw=0.5, alpha=0.9)
+                for xi, yi, tn in zip(_x, _y, _df_plot["team"]):
+                    ax_b.annotate(tn[:12], (xi, yi), xytext=(4,4),
+                                   textcoords="offset points",
+                                   fontsize=7.5, color="#1a1a2e", alpha=0.9)
+
+                slope, intercept, r_val, p_val, _ = _linreg(_x, _y)
+                _xl = np.linspace(_x.min(), _x.max(), 100)
+                ax_b.plot(_xl, slope*_xl+intercept, color="#f4a261", lw=2, zorder=4)
+                ax_b.text(0.03, 0.97,
+                           f"r = {r_val:+.3f}   R² = {r_val**2:.3f}   p = {p_val:.3f}",
+                           transform=ax_b.transAxes, va="top", fontsize=10,
+                           color="#1a1a2e",
+                           bbox=dict(boxstyle="round,pad=0.3",fc="#ffffffcc",ec="#cccccc"))
+
+                ax_b.set_xlabel(f"前半戦（GW1-{split_gw}）の {x_metric}", color="#333333", fontsize=10)
+                ax_b.set_ylabel("息切れ度（後半戦 − 前半戦  勝ち点/試合）", color="#333333", fontsize=10)
+                ax_b.set_title(
+                    f"{b_season}  {x_metric} vs 息切れ度"
+                    + (f"  ※{len(exclude_teams)}チーム除外" if exclude_teams else ""),
+                    color="#1a1a2e", fontweight="bold", fontsize=11)
+                for spine in ax_b.spines.values():
+                    spine.set_color("#cccccc")
+                plt.tight_layout()
+                st.pyplot(fig_b, use_container_width=True)
+
+                _sign = "負の相関（前半好調 → 息切れしやすい）" if r_val < 0 else "正の相関（前半好調 → 後半も維持）"
+                st.caption(
+                    f"縦軸正 = 後半に盛り返し（青）、負 = 息切れ（赤）。"
+                    f"r={r_val:+.3f}: {_sign}。"
+                    + (" p<0.05で有意。" if p_val<0.05 else " p≥0.05（有意差なし）。")
+                )
+
+                with st.expander("📊 数値テーブル"):
+                    _df_show = _df_plot[["team","x_val","first_ppm","second_ppm","burnout","total_pts"]].copy()
+                    _df_show.columns = ["チーム", x_metric,
+                                         f"前半pts/試合(GW1-{split_gw})",
+                                         f"後半pts/試合(GW{split_gw+1}-)",
+                                         "息切れ度", "最終勝ち点"]
+                    _df_show = _df_show.sort_values("息切れ度")
+                    st.dataframe(
+                        _df_show.round(3).style.background_gradient(subset=["息切れ度"], cmap="RdYlGn"),
+                        use_container_width=True, hide_index=True
+                    )
 
 with tab_table:
     # Spearman rも追加
