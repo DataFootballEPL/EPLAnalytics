@@ -614,8 +614,9 @@ with tab_burnout:
         st.markdown("**前半戦の指標（横軸）**")
         BURNOUT_METRICS = {
             "xG/M":                  ("xG",          "vaastav"),
-            "xGC/M":                 ("xGC",         "vaastav"),
-            "Net xG/M":              ("net_xG",      "vaastav"),
+            "xGC/M (GK only)":       ("xGC_gk",      "vaastav"),
+            "Net xG/M (GK method)":  ("net_xG_gk",   "vaastav"),
+            "Recoveries/M":          ("recoveries",  "vaastav"),
             "Goals/M":               ("gf",          "vaastav"),
             "Creativity/M":          ("creativity",  "vaastav"),
             "Threat/M":              ("threat",      "vaastav"),
@@ -715,7 +716,31 @@ with tab_burnout:
                     _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW","fixture"])["expected_goals_conceded"].mean().reset_index()
                     _x_vals = _fw2.groupby("team")["expected_goals_conceded"].mean().reset_index(name="x_val")
                 else:
-                    if _metric_col in ("goal_luck", "def_luck", "total_luck"):
+                    if _metric_col in ("xGC_gk", "net_xG_gk"):
+                        # GKのみのxGCを使う（EPL Analytics方式）→ 重複カウントを避ける
+                        _gk = _dg_b[(_dg_b["GW"]<=split_gw) &
+                                     (_dg_b["position"].isin(["GK","GKP"]) if "position" in _dg_b.columns
+                                      else _dg_b.get("element_type",pd.Series()) == 1)].copy()
+                        if _gk.empty:
+                            # positionがない場合はelement_typeで判定
+                            _gk = _dg_b[(_dg_b["GW"]<=split_gw)].copy()
+                        _xgc_gk = _gk.groupby(["team","GW"])["expected_goals_conceded"].sum().reset_index()
+                        _xgc_avg = _xgc_gk.groupby("team")["expected_goals_conceded"].mean().reset_index(name="xGC_gk")
+                        if _metric_col == "xGC_gk":
+                            _x_vals = _xgc_avg.rename(columns={"xGC_gk":"x_val"})
+                        else:
+                            _xg_avg = (_dg_b[_dg_b["GW"]<=split_gw]
+                                       .groupby(["team","GW"])["expected_goals"].sum()
+                                       .reset_index()
+                                       .groupby("team")["expected_goals"].mean()
+                                       .reset_index(name="xG"))
+                            _net = _xg_avg.merge(_xgc_avg, on="team", how="inner")
+                            _net["x_val"] = _net["xG"] - _net["xGC_gk"]
+                            _x_vals = _net[["team","x_val"]]
+                    elif _metric_col == "recoveries":
+                        _fw2 = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"])["recoveries"].sum().reset_index()
+                        _x_vals = _fw2.groupby("team")["recoveries"].mean().reset_index(name="x_val")
+                    elif _metric_col in ("goal_luck", "def_luck", "total_luck"):
                         # Luck系: (goals - xG) / (xGC - goals_conceded) をチーム×GWで計算
                         _gl = _dg_b[_dg_b["GW"]<=split_gw].groupby(["team","GW"]).agg(
                             goals=("goals_scored","sum"),
