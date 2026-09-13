@@ -822,6 +822,14 @@ with tab_rank:
         rank_seasons = st.multiselect("シーズン（複数選択可）", list(SEASONS.keys()),
                                        default=list(SEASONS.keys())[:2], key="rank_seasons")
         rank_split   = st.slider("前後半の区切りGW", 10, 25, 19, key="rank_split")
+        st.markdown("**ターンオーバー指標（オプション）**")
+        show_turnover_rank = st.toggle("主力選手数もランキング表示", value=False, key="rank_turnover")
+        if show_turnover_rank:
+            rank_tv_gw  = st.slider("集計対象GW（最大）", 1, 38, 19, key="rank_tv_gw",
+                                     help="この節までの出場分数で集計します")
+            rank_tv_min = st.slider("最低出場分数", 90, 2000, 855, 90, key="rank_tv_min",
+                                     help="855分 ≈ 19試合の半分以上出場")
+
         rank_exclude = {}
         with st.expander("除外チーム設定（監督交代等）", expanded=False):
             for _rs in rank_seasons:
@@ -942,12 +950,68 @@ with tab_rank:
                 st.caption("Blue = 2nd half improvement, Red = burnout. "
                            "Excludes seasons with mid-season manager changes if specified above.")
 
-                # ── 数値テーブル ──
                 st.dataframe(
                     df_disp.round(3).style.background_gradient(
                         subset=[_burnout_col], cmap="RdYlGn"),
                     use_container_width=True, hide_index=True
                 )
+
+                # ── ターンオーバーランキング ──
+                if show_turnover_rank:
+                    st.markdown(f"---")
+                    st.markdown(f"#### 主力選手数ランキング（GW1-{rank_tv_gw}で{rank_tv_min}分以上出場）")
+                    tv_rows = []
+                    for _rs in rank_seasons:
+                        _dg_tv = load_vaastav(_rs)
+                        if _dg_tv is None:
+                            continue
+                        _dg_tv["minutes"] = pd.to_numeric(_dg_tv.get("minutes", 0), errors="coerce").fillna(0)
+                        _fw_tv = _dg_tv[_dg_tv["GW"] <= rank_tv_gw].groupby(
+                            ["team","element"])["minutes"].sum().reset_index()
+                        _cnt = (_fw_tv[_fw_tv["minutes"] >= rank_tv_min]
+                                .groupby("team").size().reset_index(name="n_players"))
+                        _cnt["season"] = _rs
+                        _ex_tv = rank_exclude.get(_rs, [])
+                        if _ex_tv:
+                            _cnt = _cnt[~_cnt["team"].isin(_ex_tv)]
+                        tv_rows.append(_cnt)
+
+                    if tv_rows:
+                        df_tv = pd.concat(tv_rows, ignore_index=True)
+                        if view_mode == "シーズン別平均":
+                            df_tv_disp = (df_tv.groupby("team")["n_players"]
+                                          .mean().reset_index()
+                                          .sort_values("n_players", ascending=False))
+                            df_tv_disp.columns = ["チーム", f"主力選手数(avg, {rank_tv_min}分以上)"]
+                            _tv_col = df_tv_disp.columns[1]
+                            _tv_labels = df_tv_disp["チーム"].values
+                        else:
+                            df_tv_disp = df_tv.sort_values(["n_players"], ascending=False)
+                            df_tv_disp.columns = ["チーム","主力選手数","シーズン"]
+                            _tv_col = "主力選手数"
+                            _tv_labels = df_tv_disp.apply(
+                                lambda r: f"{r['チーム']} ({r['シーズン']})", axis=1).values
+
+                        fig_tv, ax_tv = plt.subplots(figsize=(7, max(3, len(df_tv_disp)*0.4)))
+                        fig_tv.patch.set_facecolor("#ffffff")
+                        ax_tv.set_facecolor("#f8f9fa")
+                        ax_tv.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
+                        _tv_vals = df_tv_disp[_tv_col].values
+                        ax_tv.barh(range(len(_tv_vals)), _tv_vals,
+                                    color="#6366f1", alpha=0.85, edgecolor="#555555", lw=0.3)
+                        ax_tv.set_yticks(range(len(_tv_labels)))
+                        ax_tv.set_yticklabels(_tv_labels, fontsize=8.5, color="#1a1a2e")
+                        ax_tv.set_xlabel(f"Players with >= {rank_tv_min} min in GW1-{rank_tv_gw}",
+                                          color="#333333", fontsize=9)
+                        ax_tv.set_title("Squad Depth Ranking", color="#1a1a2e",
+                                         fontweight="bold", fontsize=10)
+                        ax_tv.invert_yaxis()
+                        for spine in ax_tv.spines.values():
+                            spine.set_color("#cccccc")
+                        plt.tight_layout()
+                        st.pyplot(fig_tv, use_container_width=True)
+                        st.caption(f"選手数が少ない = 固定メンバー中心（ターンオーバー少）、多い = ローテーション多用")
+                        st.dataframe(df_tv_disp.round(1), use_container_width=True, hide_index=True)
 
 with tab_table:
     # Spearman rも追加
