@@ -646,14 +646,6 @@ with tab_burnout:
                                              "    1530分 ≈ ほぼ全試合出場")
             st.caption(f"現在: GW1-{split_gw}で{custom_min_min}分以上出場した選手数")
 
-        use_turnover = st.toggle("主力選手数を指標に使用", value=False, key="b_turnover",
-                                  help="前半戦に一定分数以上出場した選手数（ターンオーバーの少なさ）")
-        if use_turnover:
-            min_minutes = st.slider("最低出場分数", 300, 1500, 855, 90, key="b_minmin",
-                                     help="855分 ≈ 前半戦19試合の半分以上出場")
-            x_metric = f"主力選手数（{min_minutes}分以上）"
-            BURNOUT_METRICS[x_metric] = ("turnover", "vaastav")
-
         st.markdown("**除外チーム（監督交代など）**")
         _dg_b = load_vaastav(b_season)
         _all_teams_b = sorted(_dg_b["team"].dropna().unique().tolist()) if _dg_b is not None else []
@@ -853,11 +845,15 @@ with tab_burnout:
                            bbox=dict(boxstyle="round,pad=0.3",fc="#ffffffcc",ec="#cccccc"))
 
                 _tv_label = f"(>={custom_min_min}min)" if custom_min_min else ""
-                _xlabel = x_metric.replace("Squad depth (custom)", f"Squad depth {_tv_label}")
+                _xlabel = (x_metric
+                           .replace("Squad depth (custom)", f"Squad depth {_tv_label}")
+                           .replace("主力選手数","Squad depth")
+                           .encode("ascii","replace").decode("ascii")
+                           .replace("?",""))
                 ax_b.set_xlabel(f"First half (GW1-{split_gw}): {_xlabel}", color="#333333", fontsize=10)
                 ax_b.set_ylabel("Burnout score (2nd half pts/match - 1st half pts/match)", color="#333333", fontsize=10)
                 ax_b.set_title(
-                    f"{b_season}  {_xlabel} vs Burnout score"
+                    f"{b_season}  {_xlabel[:40]} vs Burnout score"
                     + (f"  ({len(exclude_teams)} teams excluded)" if exclude_teams else ""),
                     color="#1a1a2e", fontweight="bold", fontsize=11)
                 for spine in ax_b.spines.values():
@@ -899,8 +895,8 @@ with tab_rank:
         if show_turnover_rank:
             rank_tv_gw  = st.slider("集計対象GW（最大）", 1, 38, 19, key="rank_tv_gw",
                                      help="この節までの出場分数で集計します")
-            rank_tv_min = st.slider("最低出場分数", 90, 2000, 855, 90, key="rank_tv_min",
-                                     help="855分 ≈ 19試合の半分以上出場")
+            rank_tv_min = st.slider("最低出場分数", 90, 3000, 500, 90, key="rank_tv_min",
+                                     help="500分 ≈ 途中出場含む実質的な戦力\n855分 ≈ 半分以上出場\n1530分 ≈ ほぼ全試合")
 
         rank_exclude = {}
         with st.expander("除外チーム設定（監督交代等）", expanded=False):
