@@ -917,7 +917,6 @@ with tab_rank:
                     lambda row: f"{row['チーム']} ({row['シーズン']})", axis=1)
 
                 _vals  = df_disp[_burnout_col].values
-                _labels = _label_col if isinstance(_label_col, list) else df_disp[_burnout_col.split("(")[0].strip()+"チーム"[0:0]].values
                 if view_mode == "全エントリ（チーム×シーズン）":
                     _labels = df_disp.apply(lambda r: f"{r['チーム']} ({r['シーズン']})", axis=1).values
                 else:
