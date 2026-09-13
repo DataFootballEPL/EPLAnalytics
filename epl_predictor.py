@@ -39,7 +39,7 @@ p,span,li{color:#1a1a2e !important;}
 
 # ── 定数 ───────────────────────────────────────────────────────────────────
 VAASTAV  = "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data"
-SEASONS  = {"2024-25": 2024, "2023-24": 2023, "2022-23": 2022}
+SEASONS  = {"2025-26": 2025, "2024-25": 2024, "2023-24": 2023, "2022-23": 2022}
 
 APF_NAME_MAP = {
     "Manchester City": "Man City", "Manchester United": "Man Utd",
@@ -597,8 +597,8 @@ with tab_burnout:
     st.markdown("## 📉 息切れ分析（前半戦 vs 後半戦）")
     st.markdown("<hr>", unsafe_allow_html=True)
     st.caption(
-        "前半戦（GW1-N）の指標を「プレッシング強度・スタイルの代理変数」として、"
-        "後半戦との勝ち点変化（息切れ度）との相関を分析します。"
+        "Analyze the correlation between first-half metrics (proxy for pressing style) "
+        "and burnout score (2nd half - 1st half points per match)."
     )
 
     col_b1, col_b2 = st.columns([1, 2])
@@ -716,7 +716,8 @@ with tab_burnout:
                     st.warning("⚡指標はAPI-Football JSONが必要です")
                     _x_vals = pd.DataFrame(columns=["team","x_val"])
                 else:
-                    _apf_fw = _apf_b[_apf_b["GW"]<=split_gw] if "GW" in _apf_b.columns else _apf_b
+                    _gw_col_apf = "GW" if "GW" in _apf_b.columns else "gw" if "gw" in _apf_b.columns else None
+                    _apf_fw = _apf_b[_apf_b[_gw_col_apf]<=split_gw] if _gw_col_apf else _apf_b
                     _apf_col = {"possession":"possession_pct","pass_acc":"pass_accuracy",
                                 "fouls":"fouls","shots_on_tgt":"shots_on_target",
                                 "total_shots":"total_shots","shots_ag":"shots_against",
@@ -726,6 +727,7 @@ with tab_burnout:
                             sot=("shots_on_target","sum"),tot=("total_shots","sum")).reset_index()
                         _gv["x_val"] = _gv["sot"]/(_gv["tot"].clip(lower=1))*100
                         _x_vals = _gv[["team_name","x_val"]].rename(columns={"team_name":"team"})
+                        # vaastav側のチーム名と合わせる（APF_NAME_MAP適用済み想定）
                     else:
                         _rc = _apf_col.get(_metric_col,"")
                         if _rc and _rc in _apf_fw.columns:
@@ -768,33 +770,33 @@ with tab_burnout:
                            color="#1a1a2e",
                            bbox=dict(boxstyle="round,pad=0.3",fc="#ffffffcc",ec="#cccccc"))
 
-                ax_b.set_xlabel(f"前半戦（GW1-{split_gw}）の {x_metric}", color="#333333", fontsize=10)
-                ax_b.set_ylabel("息切れ度（後半戦 − 前半戦  勝ち点/試合）", color="#333333", fontsize=10)
+                ax_b.set_xlabel(f"First half (GW1-{split_gw}): {x_metric}", color="#333333", fontsize=10)
+                ax_b.set_ylabel("Burnout score (2nd half pts/match - 1st half pts/match)", color="#333333", fontsize=10)
                 ax_b.set_title(
-                    f"{b_season}  {x_metric} vs 息切れ度"
-                    + (f"  ※{len(exclude_teams)}チーム除外" if exclude_teams else ""),
+                    f"{b_season}  {x_metric} vs Burnout score"
+                    + (f"  ({len(exclude_teams)} teams excluded)" if exclude_teams else ""),
                     color="#1a1a2e", fontweight="bold", fontsize=11)
                 for spine in ax_b.spines.values():
                     spine.set_color("#cccccc")
                 plt.tight_layout()
                 st.pyplot(fig_b, use_container_width=True)
 
-                _sign = "負の相関（前半好調 → 息切れしやすい）" if r_val < 0 else "正の相関（前半好調 → 後半も維持）"
+                _sign = "negative correlation (strong 1st half -> burnout)" if r_val < 0 else "positive correlation (strong 1st half -> sustained)"
                 st.caption(
-                    f"縦軸正 = 後半に盛り返し（青）、負 = 息切れ（赤）。"
-                    f"r={r_val:+.3f}: {_sign}。"
-                    + (" p<0.05で有意。" if p_val<0.05 else " p≥0.05（有意差なし）。")
+                    f"Blue = 2nd half improvement, Red = burnout. "
+                    f"r={r_val:+.3f}: {_sign}. "
+                    + ("p<0.05 significant." if p_val<0.05 else "p>=0.05 not significant.")
                 )
 
                 with st.expander("📊 数値テーブル"):
                     _df_show = _df_plot[["team","x_val","first_ppm","second_ppm","burnout","total_pts"]].copy()
-                    _df_show.columns = ["チーム", x_metric,
-                                         f"前半pts/試合(GW1-{split_gw})",
-                                         f"後半pts/試合(GW{split_gw+1}-)",
-                                         "息切れ度", "最終勝ち点"]
-                    _df_show = _df_show.sort_values("息切れ度")
+                    _df_show.columns = ["Team", x_metric,
+                                         f"1st half pts/M (GW1-{split_gw})",
+                                         f"2nd half pts/M (GW{split_gw+1}-)",
+                                         "Burnout score", "Final pts"]
+                    _df_show = _df_show.sort_values("Burnout score")
                     st.dataframe(
-                        _df_show.round(3).style.background_gradient(subset=["息切れ度"], cmap="RdYlGn"),
+                        _df_show.round(3).style.background_gradient(subset=["Burnout score"], cmap="RdYlGn"),
                         use_container_width=True, hide_index=True
                     )
 
