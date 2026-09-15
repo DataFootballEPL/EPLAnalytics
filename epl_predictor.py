@@ -636,6 +636,14 @@ with tab_burnout:
             "Corners/M ⚡":           ("corners",     "apf"),
         }
 
+        burnout_mode = st.radio(
+            "Y軸の息切れスコア",
+            ["生の息切れスコア", "Luck調整済み息切れスコア"],
+            key="b_mode",
+            help="Luck調整済み: Total Luck（前半の運）の影響を回帰で除去した残差。\n"
+                 "純粋な戦術・体力要因による息切れを見たい場合に使います。"
+        )
+
         x_metric = st.selectbox("X軸指標（前半戦）", list(BURNOUT_METRICS.keys()), key="b_xmetric")
         custom_min_min = None
         if BURNOUT_METRICS.get(x_metric, ("",""))[0] == "turnover_custom":
@@ -688,6 +696,49 @@ with tab_burnout:
             _df_pts["first_ppm"]  = _df_pts["first_pts"]  / _n_first
             _df_pts["second_ppm"] = _df_pts["second_pts"] / _n_second
             _df_pts["burnout"]    = _df_pts["second_ppm"] - _df_pts["first_ppm"]
+
+            # ── Total Luck で調整した息切れスコアを計算 ──
+            # xG (全選手合算) と xGC (GKのみ) を前半戦分で集計
+            _luck_xg = (_dg_b[_dg_b["GW"]<=split_gw]
+                        .groupby(["team","GW"])["expected_goals"].sum()
+                        .reset_index())
+            _luck_score = (_dg_b[_dg_b["GW"]<=split_gw]
+                           .groupby(["team","GW","fixture"])
+                           .agg(goals=("goals_scored","first"), ga=("goals_conceded","first"))
+                           .reset_index()
+                           .groupby(["team","GW"])
+                           .agg(goals=("goals","sum"), ga=("ga","sum")).reset_index())
+            _pos_col_luck = "position" if "position" in _dg_b.columns else None
+            if _pos_col_luck:
+                _gk_luck = _dg_b[(_dg_b["GW"]<=split_gw) & (_dg_b[_pos_col_luck].isin(["GK","GKP"]))]
+            else:
+                _gk_luck = _dg_b[_dg_b["GW"]<=split_gw]
+            _luck_xgc = (_gk_luck.groupby(["team","GW"])["expected_goals_conceded"]
+                         .sum().reset_index().rename(columns={"expected_goals_conceded":"xgc"}))
+            _luck_df = (_luck_xg.merge(_luck_score, on=["team","GW"], how="inner")
+                                 .merge(_luck_xgc, on=["team","GW"], how="left"))
+            _luck_df["total_luck_gw"] = (
+                (_luck_df["goals"] - _luck_df["expected_goals"]) +
+                (_luck_df["xgc"]   - _luck_df["ga"])
+            )
+            _luck_team = _luck_df.groupby("team")["total_luck_gw"].mean().reset_index(name="total_luck_pm")
+            _df_pts = _df_pts.merge(_luck_team, on="team", how="left")
+
+            # Luck調整済み息切れスコア = 生息切れ − Luckの線形影響
+            # Total Luck → burnout の回帰残差として定義
+            from scipy.stats import linregress as _lr_luck
+            _mask_luck = _df_pts["total_luck_pm"].notna() & _df_pts["burnout"].notna()
+            if _mask_luck.sum() >= 4:
+                _sl, _ic, _, _, _ = _lr_luck(
+                    _df_pts.loc[_mask_luck, "total_luck_pm"],
+                    _df_pts.loc[_mask_luck, "burnout"]
+                )
+                _df_pts["burnout_luck_adj"] = (
+                    _df_pts["burnout"] -
+                    (_sl * _df_pts["total_luck_pm"] + _ic)
+                )
+            else:
+                _df_pts["burnout_luck_adj"] = _df_pts["burnout"]
 
             if exclude_teams:
                 _df_pts = _df_pts[~_df_pts["team"].isin(exclude_teams)]
@@ -818,8 +869,9 @@ with tab_burnout:
                 st.warning("データが不足しています")
             else:
                 from scipy.stats import linregress as _linreg
+                _y_col = "burnout_luck_adj" if burnout_mode == "Luck調整済み息切れスコア" else "burnout"
                 _x = _df_plot["x_val"].fillna(0).values.astype(float)
-                _y = _df_plot["burnout"].values.astype(float)
+                _y = _df_plot[_y_col].values.astype(float)
 
                 fig_b, ax_b = plt.subplots(figsize=(8, 5.5))
                 fig_b.patch.set_facecolor("#ffffff")
@@ -851,7 +903,9 @@ with tab_burnout:
                            .encode("ascii","replace").decode("ascii")
                            .replace("?",""))
                 ax_b.set_xlabel(f"First half (GW1-{split_gw}): {_xlabel}", color="#333333", fontsize=10)
-                ax_b.set_ylabel("Burnout score (2nd half pts/match - 1st half pts/match)", color="#333333", fontsize=10)
+                _ylabel = ("Luck-adjusted burnout score (residual)" if burnout_mode == "Luck調整済み息切れスコア"
+                           else "Burnout score (2nd half pts/match - 1st half pts/match)")
+                ax_b.set_ylabel(_ylabel, color="#333333", fontsize=10)
                 ax_b.set_title(
                     f"{b_season}  {_xlabel[:40]} vs Burnout score"
                     + (f"  ({len(exclude_teams)} teams excluded)" if exclude_teams else ""),
