@@ -1003,9 +1003,10 @@ if "Team" in page:
     all_metric_labels = list(TEAM_METRICS.keys())
     metric_cols = {v[0]: k for k, v in TEAM_METRICS.items()}
 
-    tab_overview, tab_rank_t, tab_trend, tab_radar, tab_scatter, tab_pca, tab_custom = st.tabs([
+    tab_overview, tab_rank_t, tab_turnover_t, tab_trend, tab_radar, tab_scatter, tab_pca, tab_custom = st.tabs([
         "📋 Available Metrics",
         "🏆 Rankings",
+        "🔄 Turnover",
         "📈 Time Series",
         "🕸️ Radar",
         "⊕ 2-Axis Plot",
@@ -1128,6 +1129,84 @@ if "Team" in page:
                     ax_tr.text(val, i, f" {val:.2f}", va="center", fontsize=8, color="#1a1a2e")
                 plt.tight_layout()
                 st.pyplot(fig_tr, use_container_width=True)
+
+    with tab_turnover_t:
+        st.markdown("## 🔄 Turnover Score")
+        st.markdown("<div class='section-bar'></div>", unsafe_allow_html=True)
+        st.caption("指定した出場時間以上プレーした選手数をチームごとに集計します。"
+                   "少ない = 固定メンバー中心（ターンオーバー少）、多い = ローテーション多用。")
+
+        col_tv1, col_tv2 = st.columns([1, 3])
+        with col_tv1:
+            tv_min_min = st.slider("最低出場分数", 90, 3000, 500, 90, key="tv_min",
+                                    help="この分数以上出場した選手を「起用した選手」としてカウント\n"
+                                         "500分 ≈ 途中出場含む実質的な戦力\n"
+                                         "855分 ≈ 半分以上出場（主力）\n"
+                                         "1710分 ≈ 全試合フル出場")
+            tv_pos_filter = st.multiselect("ポジション絞り込み（空=全員）",
+                                            ["GK","DEF","MID","FWD"], key="tv_pos")
+
+        with col_tv2:
+            # df_players から集計（df_g_raw を使用）
+            _tv_df = df_g_raw.copy() if df_g_raw is not None else None
+            if _tv_df is None:
+                st.warning("データが読み込めませんでした")
+            else:
+                # GWフィルター適用済みのdf_playersから出場分数を取得
+                _tv_players = df_players.copy()
+                if tv_pos_filter:
+                    _tv_players = _tv_players[_tv_players["position"].isin(tv_pos_filter)]
+
+                # 指定分数以上出場した選手数をチームごとに集計
+                _tv_count = (_tv_players[_tv_players["minutes"] >= tv_min_min]
+                             .groupby("team_name")
+                             .size().reset_index(name="n_players"))
+                _tv_count = _tv_count.sort_values("n_players", ascending=False).reset_index(drop=True)
+
+                if _tv_count.empty:
+                    st.warning(f"{tv_min_min}分以上出場した選手がいません。分数を下げてください。")
+                else:
+                    # 棒グラフ
+                    fig_tv, ax_tv = plt.subplots(figsize=(7, max(4, len(_tv_count)*0.45)))
+                    fig_tv.patch.set_facecolor("#ffffff")
+                    ax_tv.set_facecolor("#f8f9fa")
+                    ax_tv.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
+
+                    _tv_colors = [tcmap.get(t, "#64748b") for t in _tv_count["team_name"]]
+                    bars = ax_tv.barh(range(len(_tv_count)), _tv_count["n_players"],
+                                       color=_tv_colors, alpha=0.85,
+                                       edgecolor="#374151", lw=0.4)
+                    ax_tv.set_yticks(range(len(_tv_count)))
+                    ax_tv.set_yticklabels(_tv_count["team_name"], fontsize=10, color="#1a1a2e")
+                    ax_tv.set_xlabel(f"Players with >= {tv_min_min} min", color="#333333", fontsize=10)
+                    ax_tv.set_title(
+                        f"Squad Turnover  (>= {tv_min_min} min)" +
+                        (f"  Pos: {'+'.join(tv_pos_filter)}" if tv_pos_filter else ""),
+                        color="#1a1a2e", fontweight="bold", fontsize=11)
+                    ax_tv.invert_yaxis()
+                    # 値ラベル
+                    for i, (bar, val) in enumerate(zip(bars, _tv_count["n_players"])):
+                        ax_tv.text(val + 0.05, i, str(int(val)), va="center",
+                                    fontsize=9, color="#1a1a2e")
+                    for spine in ax_tv.spines.values():
+                        spine.set_color("#cccccc")
+                    plt.tight_layout()
+                    st.pyplot(fig_tv, use_container_width=True)
+
+                    # 数値テーブル（詳細：ポジション別内訳）
+                    with st.expander("ポジション別内訳"):
+                        _tv_detail = (_tv_players[_tv_players["minutes"] >= tv_min_min]
+                                      .groupby(["team_name","position"])
+                                      .size().unstack(fill_value=0).reset_index())
+                        _tv_detail["計"] = _tv_detail.drop("team_name", axis=1).sum(axis=1)
+                        _tv_detail = _tv_detail.sort_values("計", ascending=False)
+                        st.dataframe(_tv_detail, use_container_width=True, hide_index=True)
+
+                    st.caption(
+                        f"GWフィルター適用後のデータ。"
+                        f"選手数が少ない = 固定メンバー中心、多い = ローテーション多用。"
+                        f"ポジション絞り込みでFWのみ・DFのみの確認も可能。"
+                    )
 
     with tab_trend:
         st.markdown("## Time Series")
