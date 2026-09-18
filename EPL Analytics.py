@@ -580,6 +580,7 @@ def build_team_stats(dg_raw, team_id_map):
     team["goal_diff"]     = team["goals_scored"] - team["goals_conceded"]
     team["goal_luck"]     = (team["goals_scored"] - team["xG"]).round(2)
     team["def_luck"]      = (team["xGC"] - team["goals_conceded"]).round(2)
+    team["total_luck"]    = (team["goal_luck"] + team["def_luck"]).round(2)
     team["cs_per_match"]  = (team["clean_sheets"] / m).round(2)
     team["saves_per_match"] = (team["saves"] / m).round(2)
 
@@ -967,6 +968,7 @@ if "Team" in page:
         "xG Difference":      ("xG_diff",        "xG − xGC",                          "Attack"),
         "Goal Luck (Attack)": ("goal_luck",      "Goals − xG (positive = clinical)",  "Luck"),
         "Def Luck":           ("def_luck",       "xGC − GA (positive = fortunate)",   "Luck"),
+        "Total Luck":         ("total_luck",     "Goal Luck + Def Luck (overall luck)", "Luck"),
         "Clean Sheets":       ("clean_sheets",   "Number of clean sheets",            "Defense"),
         "CS per Match":       ("cs_per_match",   "Clean sheets / matches",            "Defense"),
         "Saves":              ("saves",          "Total saves by GK",                 "Defense"),
