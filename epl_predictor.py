@@ -377,7 +377,7 @@ if df_plot.empty:
     st.stop()
 
 # メインタブ
-tab_line, tab_scatter_tab, tab_burnout, tab_rank, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 息切れ分析", "🏆 息切れランキング", "📊 数値テーブル", "📖 読み方"])
+tab_line, tab_scatter_tab, tab_burnout, tab_rank, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 後半安定度分析", "🏆 後半安定度ランキング", "📊 数値テーブル", "📖 読み方"])
 
 with tab_line:
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -598,7 +598,7 @@ with tab_scatter_tab:
                            delta_color="normal" if p_val < 0.05 else "off")
 
 with tab_burnout:
-    st.markdown("## 📉 息切れ分析（前半戦 vs 後半戦）")
+    st.markdown("## 📉 後半安定度分析（前半戦 vs 後半戦）")
     st.markdown("<hr>", unsafe_allow_html=True)
     st.caption(
         "Analyze the correlation between first-half metrics (proxy for pressing style) "
@@ -637,8 +637,8 @@ with tab_burnout:
         }
 
         burnout_mode = st.radio(
-            "Y軸の息切れスコア",
-            ["生の息切れスコア", "Luck調整済み息切れスコア"],
+            "Y軸の指標",
+            ["後半安定度（生）", "後半安定度（Luck調整済み）"],
             key="b_mode",
             help="Luck調整済み: Total Luck（前半の運）の影響を回帰で除去した残差。\n"
                  "純粋な戦術・体力要因による息切れを見たい場合に使います。"
@@ -724,8 +724,7 @@ with tab_burnout:
             _luck_team = _luck_df.groupby("team")["total_luck_gw"].mean().reset_index(name="total_luck_pm")
             _df_pts = _df_pts.merge(_luck_team, on="team", how="left")
 
-            # Luck調整済み息切れスコア = 生息切れ − Luckの線形影響
-            # Total Luck → burnout の回帰残差として定義
+            # Luck調整済み後半安定度 = 生スコア − Luckの線形影響（回帰残差）
             from scipy.stats import linregress as _lr_luck
             _mask_luck = _df_pts["total_luck_pm"].notna() & _df_pts["burnout"].notna()
             if _mask_luck.sum() >= 4:
@@ -869,7 +868,7 @@ with tab_burnout:
                 st.warning("データが不足しています")
             else:
                 from scipy.stats import linregress as _linreg
-                _y_col = "burnout_luck_adj" if burnout_mode == "Luck調整済み息切れスコア" else "burnout"
+                _y_col = "burnout_luck_adj" if burnout_mode == "後半安定度（Luck調整済み）" else "burnout"
                 _x = _df_plot["x_val"].fillna(0).values.astype(float)
                 _y = _df_plot[_y_col].values.astype(float)
 
@@ -903,8 +902,8 @@ with tab_burnout:
                            .encode("ascii","replace").decode("ascii")
                            .replace("?",""))
                 ax_b.set_xlabel(f"First half (GW1-{split_gw}): {_xlabel}", color="#333333", fontsize=10)
-                _ylabel = ("Luck-adjusted burnout score (residual)" if burnout_mode == "Luck調整済み息切れスコア"
-                           else "Burnout score (2nd half pts/match - 1st half pts/match)")
+                _ylabel = ("2nd-half stability, Luck-adjusted (residual)" if burnout_mode == "後半安定度（Luck調整済み）"
+                           else "2nd-half stability (2nd half - 1st half pts/match)")
                 ax_b.set_ylabel(_ylabel, color="#333333", fontsize=10)
                 ax_b.set_title(
                     f"{b_season}  {_xlabel[:40]} vs Burnout score"
@@ -917,7 +916,7 @@ with tab_burnout:
 
                 _sign = "negative correlation (strong 1st half -> burnout)" if r_val < 0 else "positive correlation (strong 1st half -> sustained)"
                 st.caption(
-                    f"Blue = 2nd half improvement, Red = burnout. "
+                    f"Blue = positive (2nd half stronger), Red = negative (1st half stronger). "
                     f"r={r_val:+.3f}: {_sign}. "
                     + ("p<0.05 significant." if p_val<0.05 else "p>=0.05 not significant.")
                 )
@@ -927,15 +926,15 @@ with tab_burnout:
                     _df_show.columns = ["Team", x_metric,
                                          f"1st half pts/M (GW1-{split_gw})",
                                          f"2nd half pts/M (GW{split_gw+1}-)",
-                                         "Burnout score", "Final pts"]
-                    _df_show = _df_show.sort_values("Burnout score")
+                                         "2nd-half stability", "Final pts"]
+                    _df_show = _df_show.sort_values("2nd-half stability")
                     st.dataframe(
-                        _df_show.round(3).style.background_gradient(subset=["Burnout score"], cmap="RdYlGn"),
+                        _df_show.round(3).style.background_gradient(subset=["2nd-half stability"], cmap="RdYlGn"),
                         use_container_width=True, hide_index=True
                     )
 
 with tab_rank:
-    st.markdown("## 🏆 息切れランキング")
+    st.markdown("## 🏆 後半安定度ランキング")
     st.markdown("<hr>", unsafe_allow_html=True)
     st.caption("複数シーズン・複数指標の息切れスコアをまとめて表示。監督交代チームを除外して比較できます。")
 
@@ -1005,6 +1004,32 @@ with tab_rank:
                 _df_rs["second_ppm"] = _df_rs["second_pts"] / _n2
                 _df_rs["burnout"]    = _df_rs["second_ppm"] - _df_rs["first_ppm"]
                 _df_rs["season"]     = _rs
+                # Luck調整済みスコアを計算
+                _luck_xg_r = (_dg_rs[_dg_rs["GW"]<=rank_split]
+                               .groupby(["team","GW"])["expected_goals"].sum().reset_index())
+                _luck_sc_r = (_dg_rs[_dg_rs["GW"]<=rank_split]
+                               .groupby(["team","GW","fixture"])
+                               .agg(goals=("goals_scored","first"),ga=("goals_conceded","first"))
+                               .reset_index().groupby(["team","GW"])
+                               .agg(goals=("goals","sum"),ga=("ga","sum")).reset_index())
+                _pos_c_r = "position" if "position" in _dg_rs.columns else None
+                _gk_r = (_dg_rs[(_dg_rs["GW"]<=rank_split) & (_dg_rs[_pos_c_r].isin(["GK","GKP"]))]
+                         if _pos_c_r else _dg_rs[_dg_rs["GW"]<=rank_split])
+                _luck_xgc_r = (_gk_r.groupby(["team","GW"])["expected_goals_conceded"]
+                                .sum().reset_index().rename(columns={"expected_goals_conceded":"xgc"}))
+                _ldf_r = (_luck_xg_r.merge(_luck_sc_r,on=["team","GW"],how="inner")
+                                     .merge(_luck_xgc_r,on=["team","GW"],how="left"))
+                _ldf_r["total_luck"] = ((_ldf_r["goals"]-_ldf_r["expected_goals"])
+                                         +(_ldf_r["xgc"]-_ldf_r["ga"]))
+                _luck_team_r = _ldf_r.groupby("team")["total_luck"].mean().reset_index(name="luck_pm")
+                _df_rs = _df_rs.merge(_luck_team_r, on="team", how="left")
+                from scipy.stats import linregress as _lr_r
+                _m_r = _df_rs["luck_pm"].notna() & _df_rs["burnout"].notna()
+                if _m_r.sum() >= 4:
+                    _sl_r,_ic_r,_,_,_ = _lr_r(_df_rs.loc[_m_r,"luck_pm"],_df_rs.loc[_m_r,"burnout"])
+                    _df_rs["burnout_adj"] = _df_rs["burnout"] - (_sl_r*_df_rs["luck_pm"]+_ic_r)
+                else:
+                    _df_rs["burnout_adj"] = _df_rs["burnout"]
 
                 # 除外チームを除く
                 _ex_rs = rank_exclude.get(_rs, [])
@@ -1019,6 +1044,12 @@ with tab_rank:
                 df_all = pd.concat(all_burnout_rows, ignore_index=True)
 
                 # ── 表示オプション ──
+                rank_score_type = st.radio(
+                    "スコアの種類",
+                    ["後半安定度（生）", "後半安定度（Luck調整済み）"],
+                    horizontal=True, key="rank_score_type",
+                    help="Luck調整済み: 前半の運の影響を除いた純粋な安定度"
+                )
                 view_mode = st.radio("表示形式", ["シーズン別平均", "全エントリ（チーム×シーズン）"],
                                       horizontal=True, key="rank_view")
 
@@ -1029,10 +1060,10 @@ with tab_rank:
                                     n_seasons=("season","count"))
                                .reset_index()
                                .sort_values("burnout_avg"))
-                    df_disp.columns = ["チーム","息切れ度(平均)","最終勝ち点(平均)","対象シーズン数"]
+                    df_disp.columns = ["チーム","後半安定度(平均)","最終勝ち点(平均)","対象シーズン数"]
                 else:
                     df_disp = df_all[["team","season","burnout","first_ppm","second_ppm","total_pts"]].copy()
-                    df_disp.columns = ["チーム","シーズン","息切れ度","前半pts/M","後半pts/M","最終勝ち点"]
+                    df_disp.columns = ["チーム","シーズン","後半安定度","前半pts/M","後半pts/M","最終勝ち点"]
                     df_disp = df_disp.sort_values(["チーム","シーズン"])
 
                 # ── 棒グラフ ──
@@ -1042,7 +1073,7 @@ with tab_rank:
                 ax_r.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
                 ax_r.axvline(0, color="#94a3b8", lw=1.2, ls="--", alpha=0.7)
 
-                _burnout_col = "息切れ度(平均)" if view_mode == "シーズン別平均" else "息切れ度"
+                _burnout_col = "後半安定度(平均)" if view_mode == "シーズン別平均" else "後半安定度"
                 _label_col   = "チーム" if view_mode == "シーズン別平均" else df_disp.apply(
                     lambda row: f"{row['チーム']} ({row['シーズン']})", axis=1)
 
@@ -1059,7 +1090,7 @@ with tab_rank:
                 ax_r.set_yticklabels(_labels, fontsize=8.5, color="#1a1a2e")
                 ax_r.set_xlabel("Burnout score (2nd half - 1st half pts/match)",
                                  color="#333333", fontsize=9)
-                _title = f"Burnout Ranking  GW split={rank_split}"
+                _title = f"2nd-Half Stability Ranking  GW split={rank_split}"
                 if any(rank_exclude.values()):
                     _n_ex = sum(len(v) for v in rank_exclude.values())
                     _title += f"  ({_n_ex} team-seasons excluded)"
@@ -1069,7 +1100,7 @@ with tab_rank:
                 plt.tight_layout()
                 st.pyplot(fig_r, use_container_width=True)
 
-                st.caption("Blue = 2nd half improvement, Red = burnout. "
+                st.caption("Blue = positive (2nd half stronger), Red = negative (1st half stronger). "
                            "Excludes seasons with mid-season manager changes if specified above.")
 
                 st.dataframe(
