@@ -632,9 +632,8 @@ def build_team_stats(dg_raw, team_id_map):
         _fix_xp["xPts_match"] = _fix_xp.apply(
             lambda r: _xpts(r["xg_for"], r["xg_ag"]), axis=1)
         _xpts_team = _fix_xp.groupby("team")["xPts_match"].sum().reset_index(name="xPts")
-        _xpts_team = _xpts_team.rename(columns={"team":"team_name"})
 
-        team = team.merge(_xpts_team, on="team_name", how="left")
+        team = team.merge(_xpts_team, on="team", how="left")
         team["xPts"] = team["xPts"].fillna(0).round(1)
         team["luck_pts"] = (team["points"] - team["xPts"]).round(1)
         team["xPts_per_match"] = (team["xPts"] / m).round(2)
