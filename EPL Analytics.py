@@ -590,6 +590,59 @@ def build_team_stats(dg_raw, team_id_map):
     team["goal_diff"]     = team["goals_scored"] - team["goals_conceded"]
     team["goal_luck"]     = (team["goals_scored"] - team["xG"]).round(2)
     team["def_luck"]      = (team["xGC"] - team["goals_conceded"]).round(2)
+    # ── xPts（期待勝ち点）: Poisson分布から計算 ──────────────────────────
+    try:
+        from scipy.stats import poisson as _poisson
+        def _xpts(xgf, xga, mg=7):
+            pw = pd = 0.0
+            for i in range(mg+1):
+                pi = _poisson.pmf(i, max(float(xgf), 1e-9))
+                for j in range(mg+1):
+                    pj = _poisson.pmf(j, max(float(xga), 1e-9))
+                    if i > j:    pw += pi * pj
+                    elif i == j: pd += pi * pj
+            return pw * 3 + pd
+
+        # fixture単位でxG/xGCを集計（xGCはGKのみ）
+        _dg_xp = dg_raw.copy()
+        for _c in ["expected_goals","expected_goals_conceded"]:
+            if _c in _dg_xp.columns:
+                _dg_xp[_c] = pd.to_numeric(_dg_xp[_c], errors="coerce").fillna(0)
+        _dg_xp["was_home"] = _dg_xp["was_home"].fillna(False).astype(bool)
+        # fixture補正（移籍選手除外）
+        if "fixture" in _dg_xp.columns:
+            _cnt2 = _dg_xp.groupby(["GW","fixture","was_home","team"]).size().reset_index(name="_n2")
+            _val2 = (_cnt2.sort_values("_n2",ascending=False)
+                         .groupby(["GW","fixture","was_home"]).first()
+                         .reset_index()[["GW","fixture","was_home","team"]])
+            _val2["_v2"] = True
+            _dg_xp = _dg_xp.merge(_val2, on=["GW","fixture","was_home","team"], how="left")
+            _dg_xp = _dg_xp[_dg_xp["_v2"]==True].drop(columns=["_v2"])
+
+        # xG: 全選手合算 per fixture
+        _xg_fix = (_dg_xp.groupby(["team","GW","fixture"])["expected_goals"]
+                   .sum().reset_index(name="xg_for"))
+        # xGC: GKのみ
+        _pos_col2 = "position" if "position" in _dg_xp.columns else None
+        _gk2 = (_dg_xp[_dg_xp[_pos_col2].isin(["GK","GKP"])] if _pos_col2 else _dg_xp)
+        _xgc_fix = (_gk2.groupby(["team","GW","fixture"])["expected_goals_conceded"]
+                    .sum().reset_index(name="xg_ag"))
+        _fix_xp = _xg_fix.merge(_xgc_fix, on=["team","GW","fixture"], how="left")
+        _fix_xp["xg_ag"] = _fix_xp["xg_ag"].fillna(0)
+        _fix_xp["xPts_match"] = _fix_xp.apply(
+            lambda r: _xpts(r["xg_for"], r["xg_ag"]), axis=1)
+        _xpts_team = _fix_xp.groupby("team")["xPts_match"].sum().reset_index(name="xPts")
+        _xpts_team = _xpts_team.rename(columns={"team":"team_name"})
+
+        team = team.merge(_xpts_team, on="team_name", how="left")
+        team["xPts"] = team["xPts"].fillna(0).round(1)
+        team["luck_pts"] = (team["points"] - team["xPts"]).round(1)
+        team["xPts_per_match"] = (team["xPts"] / m).round(2)
+    except Exception as _e:
+        team["xPts"] = 0.0
+        team["luck_pts"] = 0.0
+        team["xPts_per_match"] = 0.0
+
     team["total_luck"]    = (team["goal_luck"] + team["def_luck"]).round(2)
     team["cs_per_match"]  = (team["clean_sheets"] / m).round(2)
     team["saves_per_match"] = (team["saves"] / m).round(2)
@@ -979,6 +1032,9 @@ if "Team" in page:
         "Goal Luck (Attack)": ("goal_luck",      "Goals − xG (positive = clinical)",  "Luck"),
         "Def Luck":           ("def_luck",       "xGC − GA (positive = fortunate)",   "Luck"),
         "Total Luck":         ("total_luck",     "Goal Luck + Def Luck (overall luck)", "Luck"),
+        "xPts":               ("xPts",          "Expected points from xG (Poisson)", "Luck"),
+        "Luck pts (Actual-xPts)": ("luck_pts",  "Actual pts minus xPts",             "Luck"),
+        "xPts per Match":     ("xPts_per_match","xPts / matches played",             "Luck"),
         "Clean Sheets":       ("clean_sheets",   "Number of clean sheets",            "Defense"),
         "CS per Match":       ("cs_per_match",   "Clean sheets / matches",            "Defense"),
         "Saves":              ("saves",          "Total saves by GK",                 "Defense"),
