@@ -377,7 +377,7 @@ if df_plot.empty:
     st.stop()
 
 # メインタブ
-tab_line, tab_scatter_tab, tab_burnout, tab_rank, tab_predict, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 後半安定度分析", "🏆 後半安定度ランキング", "🔮 最終勝ち点予測", "📊 数値テーブル", "📖 読み方"])
+tab_line, tab_scatter_tab, tab_burnout, tab_rank, tab_predict, tab_table, tab_note = st.tabs(["📈 相関係数推移", "⊕ 2-Axis Plot", "📉 後半安定度分析", "🏆 後半安定度ランキング", "⚽ xPts分析", "📊 数値テーブル", "📖 読み方"])
 
 with tab_line:
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -1167,263 +1167,184 @@ with tab_rank:
                         st.dataframe(df_tv_disp.round(1), use_container_width=True, hide_index=True)
 
 with tab_predict:
-    st.markdown("## 🔮 最終勝ち点予測")
+    st.markdown("## ⚽ 期待勝ち点（xPts）分析")
     st.markdown("<hr>", unsafe_allow_html=True)
     st.caption(
-        "N節時点の勝ち点と過去3シーズンの回帰から最終勝ち点を予測し、"
-        "前半戦のLuckで調整した修正予測を出します。"
+        "xGからPoisson分布を使って各試合の勝ち/引き分け/負けの確率を算出し、"
+        "期待勝ち点（xPts）を計算します。"
+        "実際の勝ち点との差がLuck（運）の成分です。"
     )
 
-    # ── 設定 ──────────────────────────────────────────────────────
-    col_p1, col_p2 = st.columns([1, 2])
-    with col_p1:
-        pred_season   = st.selectbox("予測シーズン", list(SEASONS.keys()), key="pred_season",
-                                      help="現シーズン（25-26）の途中予測に使います")
-        pred_gw       = st.slider("現在のGW（N節）", 1, 38, 19, key="pred_gw",
-                                   help="この節までのデータをもとに予測します")
-        pred_split    = st.slider("前後半の区切りGW", 10, 25, 19, key="pred_split",
-                                   help="Luck調整の基準。通常は19節")
-        pred_ref_seasons = st.multiselect(
-            "回帰に使う参照シーズン",
-            [s for s in SEASONS.keys() if s != pred_season],
-            default=[s for s in list(SEASONS.keys()) if s != pred_season][:3],
-            key="pred_ref"
-        )
-        pred_exclude  = st.multiselect("除外チーム（監督交代等）", [], key="pred_excl_dummy")
+    from scipy.stats import poisson as _poisson
 
-    with col_p2:
-        # ── 参照シーズンで回帰係数を構築 ──────────────────────────
-        _ref_rows = []
-        _luck_rows = []
+    def _calc_xpts(xg_for, xg_ag, max_g=8):
+        """Poisson分布から期待勝ち点を計算"""
+        p_win = p_draw = 0.0
+        for i in range(max_g + 1):
+            pi = _poisson.pmf(i, max(xg_for, 1e-9))
+            for j in range(max_g + 1):
+                pj = _poisson.pmf(j, max(xg_ag, 1e-9))
+                if i > j:    p_win  += pi * pj
+                elif i == j: p_draw += pi * pj
+        return p_win * 3 + p_draw
 
-        for _rs in pred_ref_seasons:
-            _dg_ref = load_vaastav(_rs)
-            if _dg_ref is None: continue
-            _dg_ref = _dg_ref.copy()
-            for c in ["expected_goals","expected_goals_conceded"]:
-                if c in _dg_ref.columns:
-                    _dg_ref[c] = pd.to_numeric(_dg_ref[c], errors="coerce").fillna(0)
-            _dg_ref["was_home"] = _dg_ref["was_home"].fillna(False).astype(bool)
-            _dg_ref["gf"] = np.where(_dg_ref["was_home"],
-                                      pd.to_numeric(_dg_ref["team_h_score"], errors="coerce"),
-                                      pd.to_numeric(_dg_ref["team_a_score"], errors="coerce"))
-            _dg_ref["ga"] = np.where(_dg_ref["was_home"],
-                                      pd.to_numeric(_dg_ref["team_a_score"], errors="coerce"),
-                                      pd.to_numeric(_dg_ref["team_h_score"], errors="coerce"))
-            _fix_ref = _dg_ref.groupby(["team","GW","fixture"]).agg(
-                gf=("gf","first"), ga=("ga","first")).reset_index()
-            _fix_ref["pts"] = np.where(_fix_ref["gf"]>_fix_ref["ga"],3,
-                               np.where(_fix_ref["gf"]==_fix_ref["ga"],1,0))
-            _gw_max_ref = int(_fix_ref["GW"].max())
-            _final_ref  = _fix_ref.groupby("team")["pts"].sum()
+    col_x1, col_x2 = st.columns([1, 2])
+    with col_x1:
+        xp_season  = st.selectbox("シーズン", list(SEASONS.keys()), key="xp_season")
+        xp_gw_range = st.slider("GW範囲", 1, 38, (1, 38), key="xp_gw",
+                                  help="この範囲の試合でxPtsを集計します")
+        xp_exclude = st.multiselect("除外チーム", [], key="xp_excl")
+        _dg_xp = load_vaastav(xp_season)
+        if _dg_xp is not None:
+            _teams_xp = sorted(_dg_xp["team"].dropna().unique().tolist())
+            xp_exclude = st.multiselect("除外チーム", _teams_xp, key="xp_excl2")
 
-            # GKのみxGC
-            _pos_ref = "position" if "position" in _dg_ref.columns else None
-            _gk_ref  = (_dg_ref[_dg_ref[_pos_ref].isin(["GK","GKP"])] if _pos_ref
-                        else _dg_ref)
-
-            # 各GW時点の勝ち点 → 最終勝ち点
-            for _n in range(1, _gw_max_ref):
-                _pts_n = _fix_ref[_fix_ref["GW"]<=_n].groupby("team")["pts"].sum()
-                for _t in _final_ref.index:
-                    if _t in _pts_n.index:
-                        _ref_rows.append({
-                            "gw": _n, "pts_n": int(_pts_n[_t]),
-                            "final_pts": int(_final_ref[_t])
-                        })
-
-            # Luck → 後半安定度（pred_splitで分割）
-            _sp = pred_split
-            _n2 = max(_gw_max_ref - _sp, 1)
-            for _t in _final_ref.index:
-                _tf = _fix_ref[_fix_ref["team"]==_t]
-                _f_ppm = _tf[_tf["GW"]<=_sp]["pts"].sum() / _sp
-                _s_ppm = _tf[_tf["GW"]>_sp]["pts"].sum() / _n2
-                _stab  = _s_ppm - _f_ppm
-                _xg_t  = (_dg_ref[(_dg_ref["team"]==_t)&(_dg_ref["GW"]<=_sp)]
-                           .groupby("GW")["expected_goals"].sum().mean())
-                _xgc_t = (_gk_ref[(_gk_ref["team"]==_t)&(_gk_ref["GW"]<=_sp)]
-                           .groupby("GW")["expected_goals_conceded"].sum().mean())
-                _goals_t = _tf[_tf["GW"]<=_sp]["gf"].sum() / _sp
-                _ga_t    = _tf[_tf["GW"]<=_sp]["ga"].sum() / _sp
-                _luck_t  = (_goals_t - _xg_t) + (_xgc_t - _ga_t)
-                _luck_rows.append({"luck_pm": _luck_t, "stability": _stab})
-
-        if not _ref_rows or not _luck_rows:
-            st.warning("参照シーズンを選択してください")
+    with col_x2:
+        if _dg_xp is None:
+            st.warning("データを読み込めませんでした")
         else:
-            from scipy.stats import linregress as _lr
+            _dg_xp = _dg_xp.copy()
+            for c in ["expected_goals","expected_goals_conceded"]:
+                if c in _dg_xp.columns:
+                    _dg_xp[c] = pd.to_numeric(_dg_xp[c], errors="coerce").fillna(0)
+            _dg_xp["was_home"] = _dg_xp["was_home"].fillna(False).astype(bool)
+            _dg_xp["gf"] = np.where(_dg_xp["was_home"],
+                                     pd.to_numeric(_dg_xp["team_h_score"],errors="coerce"),
+                                     pd.to_numeric(_dg_xp["team_a_score"],errors="coerce"))
+            _dg_xp["ga"] = np.where(_dg_xp["was_home"],
+                                     pd.to_numeric(_dg_xp["team_a_score"],errors="coerce"),
+                                     pd.to_numeric(_dg_xp["team_h_score"],errors="coerce"))
 
-            _df_ref  = pd.DataFrame(_ref_rows)
-            _df_luck = pd.DataFrame(_luck_rows)
+            # GW範囲フィルター
+            _dg_xp_f = _dg_xp[_dg_xp["GW"].between(xp_gw_range[0], xp_gw_range[1])]
 
-            # 回帰1: GW別の「N節勝ち点 → 最終勝ち点」
-            def _get_reg(n):
-                sub = _df_ref[_df_ref["gw"]==n]
-                if len(sub) < 6: return None
-                return _lr(sub["pts_n"], sub["final_pts"])
+            # fixture単位でxG/xGC集計
+            _fix_xp = _dg_xp_f.groupby(["team","GW","fixture"]).agg(
+                gf=("gf","first"), ga=("ga","first")
+            ).reset_index()
+            _fix_xp["pts"] = np.where(_fix_xp["gf"]>_fix_xp["ga"],3,
+                             np.where(_fix_xp["gf"]==_fix_xp["ga"],1,0))
 
-            # 回帰2: Luck → 後半安定度
-            _sl_luck, _ic_luck, _r_luck, _p_luck, _ = _lr(
-                _df_luck["luck_pm"], _df_luck["stability"]
+            # xG: 全選手合算
+            _xg_fix = _dg_xp_f.groupby(["team","GW","fixture"])["expected_goals"].sum().reset_index()
+
+            # xGC: GKのみ
+            _pos_xp = "position" if "position" in _dg_xp_f.columns else None
+            _gk_xp  = (_dg_xp_f[_dg_xp_f[_pos_xp].isin(["GK","GKP"])] if _pos_xp else _dg_xp_f)
+            _xgc_fix = (_gk_xp.groupby(["team","GW","fixture"])["expected_goals_conceded"]
+                        .sum().reset_index()
+                        .rename(columns={"expected_goals_conceded":"xgc"}))
+
+            _fix_xp = (_fix_xp
+                       .merge(_xg_fix, on=["team","GW","fixture"], how="left")
+                       .merge(_xgc_fix, on=["team","GW","fixture"], how="left"))
+            _fix_xp["xg_for"] = _fix_xp["expected_goals"].fillna(0)
+            _fix_xp["xg_ag"]  = _fix_xp["xgc"].fillna(0)
+
+            # xPts計算（試合ごと）
+            with st.spinner("xPts計算中..."):
+                _fix_xp["xPts"] = _fix_xp.apply(
+                    lambda r: _calc_xpts(r["xg_for"], r["xg_ag"]), axis=1)
+
+            # チーム集計
+            _sum_xp = _fix_xp.groupby("team").agg(
+                actual_pts = ("pts",  "sum"),
+                xPts       = ("xPts", "sum"),
+                matches    = ("pts",  "count"),
+                xg_total   = ("xg_for","sum"),
+                xgc_total  = ("xg_ag", "sum"),
+            ).reset_index()
+            _sum_xp["luck_pts"]   = (_sum_xp["actual_pts"] - _sum_xp["xPts"]).round(1)
+            _sum_xp["xPts"]       = _sum_xp["xPts"].round(1)
+            _sum_xp["xG_pm"]      = (_sum_xp["xg_total"] / _sum_xp["matches"]).round(2)
+            _sum_xp["xGC_pm"]     = (_sum_xp["xgc_total"] / _sum_xp["matches"]).round(2)
+
+            if xp_exclude:
+                _sum_xp = _sum_xp[~_sum_xp["team"].isin(xp_exclude)]
+
+            _sum_xp = _sum_xp.sort_values("xPts", ascending=False).reset_index(drop=True)
+            _sum_xp.index += 1
+
+            # ── グラフ ──────────────────────────────────────────────
+            fig_xp, ax_xp = plt.subplots(figsize=(8, max(5, len(_sum_xp)*0.42)))
+            fig_xp.patch.set_facecolor("#ffffff")
+            ax_xp.set_facecolor("#f8f9fa")
+            ax_xp.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
+
+            _y  = range(len(_sum_xp))
+            _xp = _sum_xp["xPts"].values
+            _ap = _sum_xp["actual_pts"].values
+            _lk = _sum_xp["luck_pts"].values
+            _teams_xp_s = _sum_xp["team"].tolist()
+
+            # xPts（青）
+            ax_xp.barh(_y, _xp, color="#1e3a5f", alpha=0.85,
+                        label="xPts (expected)", height=0.55)
+            # 実際の勝ち点との差をLuckとして表示
+            for i, (xp_val, ap_val, lk) in enumerate(zip(_xp, _ap, _lk)):
+                if lk > 0:  # lucky: 実際 > xPts
+                    ax_xp.barh(i, lk, left=xp_val, color="#22c55e",
+                                alpha=0.7, height=0.55, label="Lucky (actual > xPts)" if i==0 else "")
+                elif lk < 0:  # unlucky: 実際 < xPts
+                    ax_xp.barh(i, abs(lk), left=ap_val, color="#ef4444",
+                                alpha=0.7, height=0.55, label="Unlucky (actual < xPts)" if i==0 else "")
+                # 実際の勝ち点のマーカー
+                ax_xp.plot(ap_val, i, "|", color="#f4a261", ms=12, mew=2.5, zorder=5)
+
+            ax_xp.set_yticks(list(_y))
+            ax_xp.set_yticklabels(_teams_xp_s, fontsize=9, color="#1a1a2e")
+            ax_xp.invert_yaxis()
+            ax_xp.set_xlabel("Points", color="#333333", fontsize=10)
+            ax_xp.set_title(
+                f"{xp_season}  xPts vs Actual Points  GW{xp_gw_range[0]}-{xp_gw_range[1]}\n"
+                "Navy=xPts  Green=Lucky surplus  Red=Unlucky deficit  Orange mark=Actual pts",
+                color="#1a1a2e", fontweight="bold", fontsize=10)
+            _handles, _labels_leg = ax_xp.get_legend_handles_labels()
+            # 重複除去
+            _seen = {}
+            for h, l in zip(_handles, _labels_leg):
+                if l not in _seen: _seen[l] = h
+            ax_xp.legend(_seen.values(), _seen.keys(), fontsize=8,
+                          facecolor="#ffffff", edgecolor="#cccccc", labelcolor="#1a1a2e")
+            for spine in ax_xp.spines.values():
+                spine.set_color("#cccccc")
+            plt.tight_layout()
+            st.pyplot(fig_xp, use_container_width=True)
+
+            # ── 数値テーブル ─────────────────────────────────────────
+            _df_show = _sum_xp[["team","matches","actual_pts","xPts",
+                                  "luck_pts","xG_pm","xGC_pm"]].copy()
+            _df_show.columns = ["チーム","試合数","実勝ち点","xPts",
+                                  "Luck (実−x)", "xG/M", "xGC/M"]
+            st.dataframe(
+                _df_show.style.background_gradient(subset=["Luck (実−x)"], cmap="RdYlGn"),
+                use_container_width=True
+            )
+            st.caption(
+                "xPts = xGからPoisson分布で算出した期待勝ち点。"
+                "Luck(実−x) > 0 = 運が良かった（xPtsより多く勝ち点を取った）、"
+                "< 0 = 運が悪かった（xPtsより少ない）。"
+                "GWフィルターで前半戦のみ・後半戦のみに絞ることもできます。"
             )
 
-            # ── 予測シーズンのデータ ───────────────────────────────
-            _dg_pred = load_vaastav(pred_season)
-            if _dg_pred is None:
-                st.warning("予測シーズンのデータを読み込めません")
-            else:
-                _dg_pred = _dg_pred.copy()
-                for c in ["expected_goals","expected_goals_conceded"]:
-                    if c in _dg_pred.columns:
-                        _dg_pred[c] = pd.to_numeric(_dg_pred[c], errors="coerce").fillna(0)
-                _dg_pred["was_home"] = _dg_pred["was_home"].fillna(False).astype(bool)
-                _dg_pred["gf"] = np.where(_dg_pred["was_home"],
-                                           pd.to_numeric(_dg_pred["team_h_score"],errors="coerce"),
-                                           pd.to_numeric(_dg_pred["team_a_score"],errors="coerce"))
-                _dg_pred["ga"] = np.where(_dg_pred["was_home"],
-                                           pd.to_numeric(_dg_pred["team_a_score"],errors="coerce"),
-                                           pd.to_numeric(_dg_pred["team_h_score"],errors="coerce"))
-                _fix_pred = _dg_pred.groupby(["team","GW","fixture"]).agg(
-                    gf=("gf","first"), ga=("ga","first")).reset_index()
-                _fix_pred["pts"] = np.where(_fix_pred["gf"]>_fix_pred["ga"],3,
-                                   np.where(_fix_pred["gf"]==_fix_pred["ga"],1,0))
+            with st.expander("📖 計算方法"):
+                st.markdown("""
+**xPts（期待勝ち点）の計算手順：**
 
-                _pos_pred = "position" if "position" in _dg_pred.columns else None
-                _gk_pred  = (_dg_pred[_dg_pred[_pos_pred].isin(["GK","GKP"])] if _pos_pred
-                             else _dg_pred)
+1. 各試合のチームxG（攻撃）とxGC（GKのみ・守備）をPoisson分布に当てはめる
+2. 0〜8点の全スコア組み合わせ（81通り）それぞれの確率を計算
+3. 勝ちの確率 × 3 + 引き分けの確率 × 1 = その試合のxPts
+4. シーズン全試合を合計
 
-                # GW N 時点のデータに絞る
-                _cur = _fix_pred[_fix_pred["GW"] <= pred_gw]
-                _pts_cur = _cur.groupby("team")["pts"].sum().reset_index()
-                _pts_cur.columns = ["team","pts_n"]
+**なぜGKのみのxGCを使うのか：**
+FPLデータのxGCは「その選手が出場した時間の被xG」のため、フィールドプレーヤー全員を合算すると重複カウントになります。
+GK（1試合に1人）のxGCを使うことで正確な被xGが得られます。
 
-                # Luck計算（pred_split か pred_gw の小さい方まで）
-                _luck_gw = min(pred_gw, pred_split)
-                _teams_pred = _pts_cur["team"].tolist()
-                _luck_list = []
-                for _t in _teams_pred:
-                    _xg_t  = (_dg_pred[(_dg_pred["team"]==_t)&(_dg_pred["GW"]<=_luck_gw)]
-                               .groupby("GW")["expected_goals"].sum().mean())
-                    _xgc_t = (_gk_pred[(_gk_pred["team"]==_t)&(_gk_pred["GW"]<=_luck_gw)]
-                               .groupby("GW")["expected_goals_conceded"].sum().mean())
-                    _gf_t  = (_fix_pred[(_fix_pred["team"]==_t)&(_fix_pred["GW"]<=_luck_gw)]["gf"].sum()
-                               / max(_luck_gw, 1))
-                    _ga_t  = (_fix_pred[(_fix_pred["team"]==_t)&(_fix_pred["GW"]<=_luck_gw)]["ga"].sum()
-                               / max(_luck_gw, 1))
-                    _luck_list.append({"team":_t,
-                                       "luck_pm": (_gf_t - _xg_t) + (_xgc_t - _ga_t)})
-                _df_luck_cur = pd.DataFrame(_luck_list)
-
-                # ── 予測計算 ─────────────────────────────────────────
-                _reg_n = _get_reg(pred_gw)
-
-                _df_pred_out = _pts_cur.merge(_df_luck_cur, on="team", how="left")
-
-                if _reg_n:
-                    _sl_n, _ic_n, _r_n, _, _se_n = _reg_n
-                    # 基礎予測（回帰）
-                    _df_pred_out["base_pred"] = (
-                        _sl_n * _df_pred_out["pts_n"] + _ic_n
-                    ).round(1)
-                    # Luck補正値: luck_pm × slope × 残り試合数
-                    _remain = 38 - pred_gw
-                    _df_pred_out["luck_adj"] = (
-                        _sl_luck * _df_pred_out["luck_pm"] * _remain
-                    ).round(1)
-                    _df_pred_out["adj_pred"] = (
-                        _df_pred_out["base_pred"] + _df_pred_out["luck_adj"]
-                    ).round(1)
-                    # ±1σ（SE × sqrt(38/n)でスケール）
-                    _se_scaled = _se_n * (38 ** 0.5)
-                    _df_pred_out["ci_lo"] = (_df_pred_out["adj_pred"] - _se_scaled).round(1)
-                    _df_pred_out["ci_hi"] = (_df_pred_out["adj_pred"] + _se_scaled).round(1)
-                else:
-                    # GW数が少なくて回帰が成立しない → ペース換算
-                    _df_pred_out["base_pred"] = (
-                        _df_pred_out["pts_n"] * 38 / pred_gw
-                    ).round(1)
-                    _remain = 38 - pred_gw
-                    _df_pred_out["luck_adj"] = (
-                        _sl_luck * _df_pred_out["luck_pm"] * _remain
-                    ).round(1)
-                    _df_pred_out["adj_pred"] = (
-                        _df_pred_out["base_pred"] + _df_pred_out["luck_adj"]
-                    ).round(1)
-                    _df_pred_out["ci_lo"] = (_df_pred_out["adj_pred"] * 0.85).round(1)
-                    _df_pred_out["ci_hi"] = (_df_pred_out["adj_pred"] * 1.15).round(1)
-
-                _df_pred_out = _df_pred_out.sort_values("adj_pred", ascending=False).reset_index(drop=True)
-                _df_pred_out.index += 1
-
-                # ── グラフ ────────────────────────────────────────────
-                fig_p, ax_p = plt.subplots(figsize=(8, max(5, len(_df_pred_out)*0.45)))
-                fig_p.patch.set_facecolor("#ffffff")
-                ax_p.set_facecolor("#f8f9fa")
-                ax_p.grid(axis="x", color="#e0e0e0", lw=0.5, zorder=0)
-
-                _teams_sorted = _df_pred_out["team"].tolist()
-                _base = _df_pred_out["base_pred"].values
-                _adj  = _df_pred_out["adj_pred"].values
-                _lo   = _df_pred_out["ci_lo"].values
-                _hi   = _df_pred_out["ci_hi"].values
-
-                _y = range(len(_teams_sorted))
-                # 基礎予測（薄い色）
-                ax_p.barh(_y, _base, color="#94a3b8", alpha=0.5,
-                           label="Base prediction (regression)", height=0.55)
-                # 調整後（濃い色）
-                ax_p.barh(_y, _adj, color="#1e3a5f", alpha=0.85,
-                           label="Luck-adjusted prediction", height=0.35)
-                # 信頼区間
-                for i, (lo, hi, adj) in enumerate(zip(_lo, _hi, _adj)):
-                    ax_p.plot([lo, hi], [i, i], color="#f4a261", lw=2.5, zorder=4)
-                    ax_p.plot([lo,lo],[i-0.15,i+0.15], color="#f4a261", lw=1.5, zorder=4)
-                    ax_p.plot([hi,hi],[i-0.15,i+0.15], color="#f4a261", lw=1.5, zorder=4)
-
-                ax_p.set_yticks(list(_y))
-                ax_p.set_yticklabels(_teams_sorted, fontsize=9, color="#1a1a2e")
-                ax_p.invert_yaxis()
-                ax_p.set_xlabel("Predicted final points", color="#333333", fontsize=10)
-                _method = f"GW{pred_gw} regression" if _reg_n else f"GW{pred_gw} pace"
-                ax_p.set_title(
-                    f"{pred_season}  Final points prediction  [{_method}]\n"
-                    f"Grey=base, Navy=Luck-adjusted, Orange=±1 SE range",
-                    color="#1a1a2e", fontweight="bold", fontsize=10)
-                ax_p.legend(fontsize=8, facecolor="#ffffff", edgecolor="#cccccc", labelcolor="#1a1a2e")
-                for spine in ax_p.spines.values():
-                    spine.set_color("#cccccc")
-                plt.tight_layout()
-                st.pyplot(fig_p, use_container_width=True)
-
-                # ── 数値テーブル ───────────────────────────────────────
-                if _reg_n:
-                    st.caption(
-                        f"GW{pred_gw}時点の回帰 (r={_r_n:.2f}) + "
-                        f"Luck補正 (luck→stability r={_r_luck:.2f}, slope={_sl_luck:.3f}) | "
-                        f"残り{38-pred_gw}試合 | 橙線=±1 SE ({_se_scaled:.1f}pt)"
-                    )
-                _df_show = _df_pred_out[["team","pts_n","luck_pm","base_pred",
-                                          "luck_adj","adj_pred","ci_lo","ci_hi"]].copy()
-                _df_show.columns = ["チーム", f"GW{pred_gw}時点の勝ち点",
-                                     "Luck/M（前半）", "基礎予測", "Luck補正",
-                                     "調整後予測", "下限(−1SE)", "上限(+1SE)"]
-                st.dataframe(
-                    _df_show.round(2).style.background_gradient(subset=["調整後予測"], cmap="RdYlGn"),
-                    use_container_width=True, hide_index=False
-                )
-
-                with st.expander("📖 予測の読み方"):
-                    st.markdown(f"""
-**基礎予測**: GW{pred_gw}時点の勝ち点と過去{len(pred_ref_seasons)}シーズンの回帰直線（r={_r_n:.2f}）から算出。
-序盤ほど不確実性が大きく、GW19以降は精度が上がります。
-
-**Luck補正**: 前半戦のTotal Luck（xGより多く/少なく得点・失点した度合い）に基づき、
-後半戦の勝ち点変化を予測して加算。Luck/M が正（幸運）なほど今後は落ちやすく、負（不運）なほど上がりやすい傾向があります
-（過去3シーズンの回帰: r={_r_luck:.2f}, 残り{38-pred_gw}試合に適用）。
-
-**信頼区間（橙線）**: 過去の予測誤差の±1 SE（約68%の確率で実際の勝ち点がこの範囲内に収まる）。
-                    """)
+**Luckの解釈：**
+xPtsはサッカーの得点がPoisson分布に従うという仮定に基づきます。
+GK・守備の質やシュート位置の偏りは部分的にxGC・xGに反映されますが、
+「xGが低いのに入ってしまったシュート」などはLuckとして計上されます。
+                """)
 
 with tab_table:
     # Spearman rも追加
