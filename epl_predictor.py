@@ -90,11 +90,20 @@ def load_vaastav(season_str: str) -> pd.DataFrame | None:
     dg["ga"] = np.where(dg["was_home"],
                          pd.to_numeric(dg["team_a_score"], errors="coerce"),
                          pd.to_numeric(dg["team_h_score"], errors="coerce"))
-    # fixture単位で勝ち点を計算（選手行の重複を避ける）
     dg["match_pts"] = np.where(dg["gf"] > dg["ga"], 3,
                       np.where(dg["gf"] == dg["ga"], 1, 0))
-    # pts列 = fixture単位で一意化した勝ち点（後でgroupby合計するため）
-    # fixture×teamで先頭行のmatch_ptsをptsとして割り当て
+
+    # FPL直接取得データでは移籍選手の影響で1fixture×was_homeに複数チームが混在する
+    # → fixture×was_home で最多選手数のチームのみを有効なチームとして使う
+    _cnt = (dg.groupby(["GW","fixture","was_home","team"])
+              .size().reset_index(name="_n"))
+    _valid = (_cnt.sort_values("_n", ascending=False)
+                  .groupby(["GW","fixture","was_home"])
+                  .first().reset_index()[["GW","fixture","was_home","team"]])
+    _valid["_valid"] = True
+    dg = dg.merge(_valid, on=["GW","fixture","was_home","team"], how="left")
+    dg = dg[dg["_valid"]==True].drop(columns=["_valid"])
+
     _fix_pts = dg.groupby(["team","GW","fixture"])["match_pts"].first().reset_index()
     _fix_pts = _fix_pts.rename(columns={"match_pts":"pts"})
     dg = dg.merge(_fix_pts[["team","GW","fixture","pts"]], on=["team","GW","fixture"], how="left")
