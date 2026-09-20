@@ -39,7 +39,7 @@ p,span,li{color:#1a1a2e !important;}
 
 # ── 定数 ───────────────────────────────────────────────────────────────────
 VAASTAV  = "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data"
-SEASONS  = {"2025-26": 2025, "2024-25": 2024, "2023-24": 2023, "2022-23": 2022}
+SEASONS  = {"2026-27": 2026, "2025-26": 2025, "2024-25": 2024, "2023-24": 2023, "2022-23": 2022}
 
 APF_NAME_MAP = {
     "Manchester City": "Man City", "Manchester United": "Man Utd",
@@ -63,8 +63,19 @@ def _get(url):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_vaastav(season_str: str) -> pd.DataFrame | None:
-    """GW×チームの時系列データを構築"""
-    r = _get(f"{VAASTAV}/{season_str}/gws/merged_gw.csv")
+    """GW×チームの時系列データを構築（自リポジトリ優先→vaastav）"""
+    _repo_u = ""
+    _repo_r = ""
+    try:
+        _repo_u = st.secrets.get("GITHUB_USER", "")
+        _repo_r = st.secrets.get("GITHUB_REPO", "")
+    except Exception:
+        pass
+    r = None
+    if _repo_u and _repo_r:
+        r = _get(f"https://raw.githubusercontent.com/{_repo_u}/{_repo_r}/main/fpl_merged_gw_{season_str}.csv")
+    if not r:
+        r = _get(f"{VAASTAV}/{season_str}/gws/merged_gw.csv")
     if not r:
         return None
     dg = pd.read_csv(io.StringIO(r.text))
