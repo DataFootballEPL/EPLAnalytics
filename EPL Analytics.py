@@ -509,10 +509,20 @@ def build_team_stats(dg_raw, team_id_map):
     for c in NUM_COLS_GW:
         dg[c] = pd.to_numeric(dg[c] if c in dg.columns
                               else pd.Series(0, index=dg.index), errors="coerce").fillna(0)
-    dg["gf"] = np.where(dg["was_home"].fillna(False),
-                        dg["team_h_score"], dg["team_a_score"])
-    dg["ga"] = np.where(dg["was_home"].fillna(False),
-                        dg["team_a_score"], dg["team_h_score"])
+    dg["was_home"] = dg["was_home"].fillna(False).astype(bool)
+    dg["gf"] = np.where(dg["was_home"], dg["team_h_score"], dg["team_a_score"])
+    dg["ga"] = np.where(dg["was_home"], dg["team_a_score"], dg["team_h_score"])
+
+    # FPL直接取得データ対応: fixture×was_home で最多選手数のチームのみ有効
+    if "fixture" in dg.columns:
+        _cnt = (dg.groupby(["GW","fixture","was_home","team"])
+                  .size().reset_index(name="_n"))
+        _valid = (_cnt.sort_values("_n", ascending=False)
+                      .groupby(["GW","fixture","was_home"])
+                      .first().reset_index()[["GW","fixture","was_home","team"]])
+        _valid["_valid"] = True
+        dg = dg.merge(_valid, on=["GW","fixture","was_home","team"], how="left")
+        dg = dg[dg["_valid"]==True].drop(columns=["_valid"])
 
     # 得失点（マッチスコアから）
     ms = dg.dropna(subset=["gf","ga"]).groupby(["team","round"]).agg(
