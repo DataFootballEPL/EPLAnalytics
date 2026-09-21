@@ -2305,6 +2305,24 @@ else:
                     key=f"dt_{pos_label}", label_visibility="visible"
                 )
 
+            # ベンチ枠
+            st.markdown("---")
+            st.markdown("**🪑 ベンチ（4人）**")
+            bench_slots = [
+                ("GK2",  "GK", "(未選択)"),
+                ("SUB2", "DF", "(未選択)"),
+                ("SUB3", "MF", "(未選択)"),
+                ("SUB4", "FW", "(未選択)"),
+            ]
+            bench_assignments = {}
+            for slot_key, hint, _ in bench_slots:
+                bench_assignments[slot_key] = st.selectbox(
+                    f"{slot_key} ({hint}推奨)",
+                    ["(未選択)"] + all_players_dt,
+                    key=f"dt_bench_{slot_key}"
+                )
+            bench_players = [v for v in bench_assignments.values() if v != "(未選択)"]
+
             # 色分けモード
             color_mode = st.radio("選手の色分け", ["ポジション別", "チーム別"],
                                    horizontal=True, key="dt_color")
@@ -2423,27 +2441,78 @@ else:
             st.pyplot(fig_field, use_container_width=True)
 
             # ── スタッツカード ───────────────────────────────────
-            if len(selected_players) >= 1:
-                df_sp = df_filt[df_filt["display_name"].isin(selected_players)].copy()
-                # per matchに換算: 出場試合数の近似としてstarts列を使用
-                # minutesから試合換算（90分=1試合）
+            # FPLポイント表示切替
+            fpl_pts_mode = st.radio(
+                "FPL Points表示",
+                ["シーズン累計", "1試合平均（GW平均）"],
+                horizontal=True, key="dt_pts_mode"
+            )
+
+            all_squad = selected_players + bench_players  # 最大15人
+            if len(all_squad) >= 1:
+                df_sp     = df_filt[df_filt["display_name"].isin(selected_players)].copy()   # 11人
+                df_squad  = df_filt[df_filt["display_name"].isin(all_squad)].copy()           # 最大15人
+                df_bench  = df_filt[df_filt["display_name"].isin(bench_players)].copy()       # ベンチ
+
                 _total_min = df_sp["minutes"].sum()
-                _matches   = max(_total_min / 90, 1)  # 11人合計の90分換算試合数
+                _matches   = max(_total_min / 90, 1)
 
                 _xg  = df_sp["expected_goals"].sum() / _matches
                 _xa  = df_sp["expected_assists"].sum() / _matches
-                _cbi = df_sp["clearances_blocks_interceptions"].sum() / _matches
                 _cre = df_sp["creativity"].sum() / _matches
-                _total_price = df_sp["price_m"].sum()
+                _total_price = df_squad["price_m"].sum()  # 15人合計
 
-                st.caption(f"📊 per 90分換算（合計出場{_total_min:.0f}分 / {_matches:.1f}試合分）　💰 Price = FPLゲーム内価格（架空・£100M予算制）。実際の移籍金とは無関係。")
-                _fpl_pts = float(df_sp["total_points"].sum()) if "total_points" in df_sp.columns else 0.0
+                # FPLポイント（11人 / 15人 両方）
+                _gw_played = df_filt["GW"].nunique() if "GW" in df_filt.columns else 1
+                if fpl_pts_mode == "シーズン累計":
+                    _fpl_11  = float(df_sp["total_points"].sum())    if "total_points" in df_sp.columns    else 0.0
+                    _fpl_15  = float(df_squad["total_points"].sum())  if "total_points" in df_squad.columns else 0.0
+                    _pts_label = "FPL pts（累計）"
+                else:
+                    _gw_n = max(df_filt["GW"].nunique(), 1) if "GW" in df_filt.columns else 1
+                    _fpl_11  = float(df_sp["total_points"].sum())    / _gw_n if "total_points" in df_sp.columns    else 0.0
+                    _fpl_15  = float(df_squad["total_points"].sum())  / _gw_n if "total_points" in df_squad.columns else 0.0
+                    _pts_label = "FPL pts/GW（平均）"
+
+                st.caption(
+                    f"📊 per 90分換算（合計{_total_min:.0f}分/{_matches:.1f}試合）　"
+                    f"💰 FPL Price = ゲーム内架空価格（£100M予算制）　"
+                    f"🔢 スタッツは先発11人、コスト・ポイントは15人合計"
+                )
+
+                # ── メインスタッツカード（11人） ──
+                st.markdown("**先発11人**")
                 _c1, _c2, _c3, _c4 = st.columns(4)
-                _c1.metric("⚽ xG合計",     f"{df_sp['expected_goals'].sum():.2f}")
-                _c2.metric("🎯 xA合計",     f"{df_sp['expected_assists'].sum():.2f}")
-                _c3.metric("🏆 FPL Points", f"{_fpl_pts:.0f}")
-                _c4.metric("💰 FPL Price",  f"£{_total_price:.1f}M",
-                            help="FPLゲーム内の架空価格合計（実際の移籍金とは異なります）")
+                _c1.metric("⚽ xG合計",  f"{df_sp['expected_goals'].sum():.2f}")
+                _c2.metric("🎯 xA合計",  f"{df_sp['expected_assists'].sum():.2f}")
+                _c3.metric(f"🏆 {_pts_label}", f"{_fpl_11:.1f}")
+                _c4.metric("💰 Price(11)", f"£{df_sp['price_m'].sum():.1f}M")
+
+                # ── 15人合計カード ──
+                if bench_players:
+                    st.markdown("**スカッド15人合計**")
+                    _b1, _b2, _b3 = st.columns(3)
+                    _b1.metric(f"🏆 {_pts_label}（15人）", f"{_fpl_15:.1f}")
+                    _b2.metric("💰 Total Price（15人）", f"£{_total_price:.1f}M",
+                                delta=f"残り £{100 - _total_price:.1f}M" if _total_price <= 100
+                                      else f"⚠️ £{_total_price - 100:.1f}M オーバー",
+                                delta_color="normal" if _total_price <= 100 else "inverse")
+                    _b3.metric("📊 FPL Budget", "£100.0M",
+                                help="FPLの予算上限は£100M")
+
+                # ── FPL参考情報 ──
+                st.markdown("---")
+                st.markdown("**📈 FPLリーグ参考値**")
+                _ref1, _ref2, _ref3 = st.columns(3)
+                _league_pts_mean = df_filt["total_points"].mean() if "total_points" in df_filt.columns else 0
+                _league_pts_max  = df_filt["total_points"].max()  if "total_points" in df_filt.columns else 0
+                if fpl_pts_mode != "シーズン累計":
+                    _gw_n2 = max(df_filt["GW"].nunique(), 1) if "GW" in df_filt.columns else 1
+                    _league_pts_mean /= _gw_n2
+                    _league_pts_max  /= _gw_n2
+                _ref1.metric("💰 予算上限", "£100.0M")
+                _ref2.metric("📊 全選手 pts 平均", f"{_league_pts_mean:.1f}")
+                _ref3.metric("🥇 全選手 pts 最高", f"{_league_pts_max:.0f}")
 
             # ── レーダーチャート ──────────────────────────────────
             if len(selected_players) >= 3 and sel_dt_metrics:
