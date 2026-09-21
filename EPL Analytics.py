@@ -289,6 +289,17 @@ def build_team_timeseries(dg_raw, team_id_map: dict) -> "pd.DataFrame":
     dg["pts"] = np.where(dg["gf"] > dg["ga"], 3,
                 np.where(dg["gf"] == dg["ga"], 1, 0))
 
+    # FPL直接取得データ対応: fixture×was_home で最多選手数のチームのみ有効
+    if "fixture" in dg.columns and "team" in dg.columns:
+        _cnt_ts = (dg.groupby(["GW","fixture","was_home","team"])
+                     .size().reset_index(name="_n_ts"))
+        _valid_ts = (_cnt_ts.sort_values("_n_ts", ascending=False)
+                             .groupby(["GW","fixture","was_home"])
+                             .first().reset_index()[["GW","fixture","was_home","team"]])
+        _valid_ts["_v_ts"] = True
+        dg = dg.merge(_valid_ts, on=["GW","fixture","was_home","team"], how="left")
+        dg = dg[dg["_v_ts"]==True].drop(columns=["_v_ts"])
+
     # merged_gw.csv の team列はチーム名文字列（vaastav 2025-26以降）
     # 古いシーズンでは数値IDの場合もあるため両方対応
     if "team" not in dg.columns:
