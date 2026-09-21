@@ -1764,12 +1764,13 @@ else:
                         f"Filtered players: <b style='color:{C['amber']}'>{len(df_filt)}</b></div>",
                         unsafe_allow_html=True)
 
-    tab_avail, tab_top10, tab_prad, tab_scatter2, tab_pcap, tab_unit, tab_dream, tab_custp = st.tabs([
+    tab_avail, tab_top10, tab_prad, tab_scatter2, tab_pcap, tab_pts_ts, tab_unit, tab_dream, tab_custp = st.tabs([
         "📋 Available Metrics",
         "🏆 Top 10 Rankings",
         "🕸️ Player Radar",
         "⊕ 2-Axis Plot",
         "📐 Play Style (PCA)",
+        "📈 Time Series",
         "👥 Unit Analysis",
         "⚽ Dream Team",
         "🔧 Custom Metric",
@@ -2125,6 +2126,124 @@ else:
         else:
             st.info("5人以上の選手と3指標以上を選択してください。")
 
+    with tab_pts_ts:
+        st.markdown("## 📈 Player Time Series")
+        st.markdown("<div class='section-bar'></div>", unsafe_allow_html=True)
+        st.caption("選手ごとのGW別指標推移を折れ線グラフで表示します。")
+
+        # GW別データが必要 → df_g_raw を使用
+        if df_g_raw is None or "GW" not in df_g_raw.columns:
+            st.warning("GW別データが読み込まれていません")
+        else:
+            col_pts1, col_pts2 = st.columns([1, 3])
+            with col_pts1:
+                # 指標選択
+                PTS_METRICS = {
+                    "FPL Points":        ("total_points",                False),
+                    "Minutes":           ("minutes",                     False),
+                    "Goals":             ("goals_scored",                False),
+                    "Assists":           ("assists",                     False),
+                    "xG":                ("expected_goals",              False),
+                    "xA":                ("expected_assists",            False),
+                    "xGI":               ("expected_goal_involvements",  False),
+                    "Creativity":        ("creativity",                  False),
+                    "Threat":            ("threat",                      False),
+                    "Influence":         ("influence",                   False),
+                    "BPS":               ("bps",                         False),
+                    "Bonus":             ("bonus",                       False),
+                    "Saves":             ("saves",                       False),
+                    "Clean Sheets":      ("clean_sheets",                False),
+                    "Yellow Cards":      ("yellow_cards",                False),
+                    "FPL Points (cum)":  ("total_points",                True),
+                    "xG (cum)":          ("expected_goals",              True),
+                    "Minutes (cum)":     ("minutes",                     True),
+                }
+                pts_metric = st.selectbox("指標", list(PTS_METRICS.keys()), key="pts_ts_metric")
+                pts_col, pts_cum = PTS_METRICS[pts_metric]
+
+                # 選手選択（複数）
+                all_display = sorted(df_players["display_name"].tolist())
+                pts_players = st.multiselect(
+                    "選手を選択",
+                    all_display,
+                    max_selections=10,
+                    key="pts_ts_players",
+                    help="最大10人まで選択できます"
+                )
+                pts_show_avg = st.toggle("ポジション平均を表示", value=False, key="pts_ts_avg")
+
+            with col_pts2:
+                if not pts_players:
+                    st.info("左パネルで選手を選択してください（最大10人）")
+                else:
+                    # df_g_raw から選手IDを特定
+                    _dg_pts = df_g_raw.copy()
+                    for c in [pts_col]:
+                        if c in _dg_pts.columns:
+                            _dg_pts[c] = pd.to_numeric(_dg_pts[c], errors="coerce").fillna(0)
+
+                    # display_name → element ID の対応
+                    _id_map = df_players.set_index("display_name")["id"].to_dict()
+                    _sel_ids = [_id_map[p] for p in pts_players if p in _id_map]
+
+                    _dg_sel = _dg_pts[_dg_pts["element"].isin(_sel_ids)].copy() if "element" in _dg_pts.columns else pd.DataFrame()
+
+                    # display_name を付与
+                    _inv_map = {v: k for k, v in _id_map.items()}
+                    if not _dg_sel.empty:
+                        _dg_sel["display_name"] = _dg_sel["element"].map(_inv_map)
+
+                        # GW別集計
+                        _gw_data = _dg_sel.groupby(["display_name","GW"])[pts_col].sum().reset_index()
+                        if pts_cum:
+                            _gw_data[pts_col] = _gw_data.groupby("display_name")[pts_col].cumsum()
+
+                        # 描画
+                        fig_pts, ax_pts = plt.subplots(figsize=(9, 5))
+                        fig_pts.patch.set_facecolor("#ffffff")
+                        ax_pts.set_facecolor("#f8f9fa")
+                        ax_pts.grid(color="#e0e0e0", lw=0.5, zorder=0)
+
+                        COLORS10 = ["#ef4444","#3b82f6","#22c55e","#f59e0b",
+                                     "#8b5cf6","#ec4899","#06b6d4","#84cc16",
+                                     "#f97316","#64748b"]
+
+                        for i, pname in enumerate(pts_players):
+                            _pd = _gw_data[_gw_data["display_name"]==pname].sort_values("GW")
+                            if _pd.empty: continue
+                            _c = COLORS10[i % len(COLORS10)]
+                            ax_pts.plot(_pd["GW"], _pd[pts_col],
+                                         color=_c, lw=2, marker="o", markersize=4,
+                                         label=pname[:20], alpha=0.9, zorder=3)
+
+                        # ポジション平均
+                        if pts_show_avg:
+                            for pname in pts_players:
+                                _pos = df_players[df_players["display_name"]==pname]["position"].iloc[0] if pname in df_players["display_name"].values else None
+                                if not _pos: continue
+                                _pos_ids = df_players[df_players["position"]==_pos]["id"].tolist()
+                                _pos_data = _dg_pts[_dg_pts["element"].isin(_pos_ids)]
+                                _pos_avg = _pos_data.groupby("GW")[pts_col].mean()
+                                if pts_cum:
+                                    _pos_avg = _pos_avg.cumsum()
+                                ax_pts.plot(_pos_avg.index, _pos_avg.values,
+                                             color="#94a3b8", lw=1.2, ls="--", alpha=0.6,
+                                             label=f"{_pos} avg", zorder=2)
+
+                        ax_pts.set_xlabel("Gameweek (GW)", color="#333333", fontsize=10)
+                        ax_pts.set_ylabel(pts_metric, color="#333333", fontsize=10)
+                        ax_pts.set_title(
+                            f"{pts_metric} per GW" + (" (cumulative)" if pts_cum else ""),
+                            color="#1a1a2e", fontweight="bold", fontsize=11)
+                        ax_pts.tick_params(colors="#333333")
+                        for spine in ax_pts.spines.values():
+                            spine.set_color("#cccccc")
+                        ax_pts.legend(fontsize=8, facecolor="#ffffff",
+                                       edgecolor="#cccccc", labelcolor="#1a1a2e",
+                                       bbox_to_anchor=(1.01,1), loc="upper left")
+                        plt.tight_layout()
+                        st.pyplot(fig_pts, use_container_width=True)
+
     with tab_unit:
         st.markdown("## Unit Analysis")
         st.markdown("<div class='section-bar'></div>", unsafe_allow_html=True)
@@ -2463,15 +2582,16 @@ else:
                 _total_price = df_squad["price_m"].sum()  # 15人合計
 
                 # FPLポイント（11人 / 15人 両方）
-                _gw_played = df_filt["GW"].nunique() if "GW" in df_filt.columns else 1
+                # GW数は df_g_raw から取得（players_rawにはGW列がない）
+                _gw_n_dt = int(df_g_raw["GW"].dropna().nunique()) if df_g_raw is not None and "GW" in df_g_raw.columns else 1
+                _gw_n_dt = max(_gw_n_dt, 1)
                 if fpl_pts_mode == "シーズン累計":
                     _fpl_11  = float(df_sp["total_points"].sum())    if "total_points" in df_sp.columns    else 0.0
                     _fpl_15  = float(df_squad["total_points"].sum())  if "total_points" in df_squad.columns else 0.0
                     _pts_label = "FPL pts（累計）"
                 else:
-                    _gw_n = max(df_filt["GW"].nunique(), 1) if "GW" in df_filt.columns else 1
-                    _fpl_11  = float(df_sp["total_points"].sum())    / _gw_n if "total_points" in df_sp.columns    else 0.0
-                    _fpl_15  = float(df_squad["total_points"].sum())  / _gw_n if "total_points" in df_squad.columns else 0.0
+                    _fpl_11  = float(df_sp["total_points"].sum())    / _gw_n_dt if "total_points" in df_sp.columns    else 0.0
+                    _fpl_15  = float(df_squad["total_points"].sum())  / _gw_n_dt if "total_points" in df_squad.columns else 0.0
                     _pts_label = "FPL pts/GW（平均）"
 
                 st.caption(
@@ -2507,9 +2627,8 @@ else:
                 _league_pts_mean = df_filt["total_points"].mean() if "total_points" in df_filt.columns else 0
                 _league_pts_max  = df_filt["total_points"].max()  if "total_points" in df_filt.columns else 0
                 if fpl_pts_mode != "シーズン累計":
-                    _gw_n2 = max(df_filt["GW"].nunique(), 1) if "GW" in df_filt.columns else 1
-                    _league_pts_mean /= _gw_n2
-                    _league_pts_max  /= _gw_n2
+                    _league_pts_mean /= _gw_n_dt
+                    _league_pts_max  /= _gw_n_dt
                 _ref1.metric("💰 予算上限", "£100.0M")
                 _ref2.metric("📊 全選手 pts 平均", f"{_league_pts_mean:.1f}")
                 _ref3.metric("🥇 全選手 pts 最高", f"{_league_pts_max:.0f}")
