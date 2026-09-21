@@ -2154,9 +2154,11 @@ else:
                     "Saves":             ("saves",                       False),
                     "Clean Sheets":      ("clean_sheets",                False),
                     "Yellow Cards":      ("yellow_cards",                False),
+                    "Cost (£M)":         ("price_m",                     False),
                     "FPL Points (cum)":  ("total_points",                True),
                     "xG (cum)":          ("expected_goals",              True),
                     "Minutes (cum)":     ("minutes",                     True),
+                    "Pts/Cost (cum)":    ("pts_per_cost",                True),
                 }
                 pts_metric = st.selectbox("指標", list(PTS_METRICS.keys()), key="pts_ts_metric")
                 pts_col, pts_cum = PTS_METRICS[pts_metric]
@@ -2192,6 +2194,11 @@ else:
                     _inv_map = {v: k for k, v in _id_map.items()}
                     if not _dg_sel.empty:
                         _dg_sel["display_name"] = _dg_sel["element"].map(_inv_map)
+
+                        # price_m / pts_per_cost は df_g_raw にないので df_players から付与
+                        if pts_col in ["price_m", "pts_per_cost"]:
+                            _price_map = df_players.set_index("id")[pts_col].to_dict() if pts_col in df_players.columns else {}
+                            _dg_sel[pts_col] = _dg_sel["element"].map(_price_map).fillna(0)
 
                         # GW別集計
                         _gw_data = _dg_sel.groupby(["display_name","GW"])[pts_col].sum().reset_index()
@@ -2558,6 +2565,35 @@ else:
 
             plt.tight_layout(pad=0.3)
             st.pyplot(fig_field, use_container_width=True)
+
+            # ── ベンチ表示 ──────────────────────────────────────────
+            if bench_players:
+                fig_bench, ax_bench = plt.subplots(figsize=(7, 0.9))
+                fig_bench.patch.set_facecolor("#1a6b2a")
+                ax_bench.set_facecolor("#1a6b2a")
+                ax_bench.set_xlim(0, 1); ax_bench.set_ylim(0, 1)
+                ax_bench.axis("off")
+                ax_bench.text(0.02, 0.5, "BENCH:", color="white",
+                               fontsize=8, va="center", alpha=0.7)
+                _bench_slot_map = {"GK2":"GK","SUB2":"DF","SUB3":"MF","SUB4":"FW"}
+                _bench_colors_map = {"GK":"#f59e0b","DF":"#22c55e","MF":"#3b82f6","FW":"#ef4444"}
+                _bx = [0.15 + 0.21*i for i in range(4)]
+                for i, (slot, pname) in enumerate(bench_assignments.items()):
+                    _bpos   = _bench_slot_map.get(slot, "SUB")
+                    _bc     = _bench_colors_map.get(_bpos, "#64748b")
+                    _bshort = pname.split(" (")[0][:13] if pname != "(未選択)" else "—"
+                    if color_mode == "チーム別" and pname != "(未選択)":
+                        _brow = df_filt[df_filt["display_name"]==pname]
+                        _btname = _brow["team_name"].iloc[0] if not _brow.empty else ""
+                        _bc = tcmap.get(_btname, _bc)
+                    ax_bench.text(_bx[i], 0.55, _bshort, ha="center", va="center",
+                                   fontsize=8.5, color="white", fontweight="bold",
+                                   bbox=dict(boxstyle="round,pad=0.25", fc=_bc,
+                                              ec="#ffffffaa", lw=0.8))
+                    ax_bench.text(_bx[i], 0.1, _bpos, ha="center", va="bottom",
+                                   fontsize=6, color="white", alpha=0.7)
+                plt.tight_layout(pad=0.1)
+                st.pyplot(fig_bench, use_container_width=True)
 
             # ── スタッツカード ───────────────────────────────────
             # FPLポイント表示切替
