@@ -313,8 +313,15 @@ def build_team_timeseries(dg_raw, team_id_map: dict) -> "pd.DataFrame":
             # 既にチーム名文字列の場合はそのまま使う
             dg["team_name"] = dg["team"].astype(str)
 
+    # xGCはGKのみで集計（全選手合算すると重複カウントになる）
+    _pos_col_ts = "position" if "position" in dg.columns else None
+    _gk_ts = dg[dg[_pos_col_ts].isin(["GK","GKP"])] if _pos_col_ts else dg
+    _xgc_fix_ts = (_gk_ts.groupby(["team_name","GW","fixture"])["expected_goals_conceded"]
+                   .sum().reset_index(name="xGC_fix"))
+    _xgc_ts = _xgc_fix_ts.groupby(["team_name","GW"])["xGC_fix"].mean().reset_index(name="xGC_gw")
+
     _agg_cols = {c: "sum" for c in
-                 ["expected_goals","expected_goals_conceded","goals_scored","goals_conceded",
+                 ["expected_goals","goals_scored","goals_conceded",
                   "yellow_cards","red_cards","assists","saves","clean_sheets","bonus",
                   "creativity","threat","influence","ict_index",
                   "tackles","recoveries","clearances_blocks_interceptions","defensive_contribution"]
@@ -323,11 +330,15 @@ def build_team_timeseries(dg_raw, team_id_map: dict) -> "pd.DataFrame":
 
     ts = dg.groupby(["team_name", "GW", "fixture"]).agg(**{k: (k, v) for k, v in _agg_cols.items()}).reset_index()
     ts = ts.rename(columns={
-        "expected_goals": "xG", "expected_goals_conceded": "xGC",
+        "expected_goals": "xG",
         "goals_scored": "goals_for_sum", "goals_conceded": "goals_ag_sum",
         "clearances_blocks_interceptions": "cbi",
         "defensive_contribution": "def_contribution",
     })
+    # GKベースのxGCをマージ
+    ts = ts.merge(_xgc_ts, on=["team_name","GW"], how="left")
+    ts = ts.rename(columns={"xGC_gw": "xGC"})
+    ts["xGC"] = ts["xGC"].fillna(0)
     ts = ts.sort_values(["team_name", "GW"]).reset_index(drop=True)
 
     # 累積列を追加
@@ -1430,7 +1441,7 @@ if "Team" in page:
                                color="#666666", lw=2, ls="--",
                                label="League Avg", alpha=0.7, zorder=4)
 
-                ax_ts.set_xlabel("GW（節）", color="#333333", fontsize=10)
+                ax_ts.set_xlabel("Gameweek (GW)", color="#333333", fontsize=10)
                 ax_ts.set_ylabel(ts_metric, color="#333333", fontsize=10)
                 ax_ts.set_title(ts_metric, color="#1a1a2e", fontweight="bold", fontsize=12)
                 ax_ts.tick_params(colors="#333333")
@@ -1454,7 +1465,7 @@ if "Team" in page:
                 plt.tight_layout()
                 st.pyplot(fig_ts, use_container_width=True)
                 _ma_note = f"（{ts_ma}試合移動平均）" if ts_ma > 1 and not ts_is_cum else ""
-                st.caption(f"横軸 = GW（節）　縦軸 = {ts_metric}{_ma_note}　破線 = リーグ平均")
+                st.caption(f"X = Gameweek  Y = {ts_metric}{_ma_note}  Dashed = League Avg")
 
     with tab_radar:
         st.markdown("## Radar Chart — Team Comparison")
