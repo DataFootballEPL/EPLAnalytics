@@ -696,8 +696,54 @@ PITCH_COLORS = [
     "#2dd4bf","#f472b6","#818cf8","#facc15","#6ee7b7",
 ]
 
+_EPL_CLUB_COLORS = {
+    "Arsenal":        "#EF0107",
+    "Aston Villa":    "#95BFE5",
+    "Bournemouth":    "#DA291C",
+    "Brentford":      "#D20000",
+    "Brighton":       "#0057B8",
+    "Burnley":        "#6C1D45",
+    "Chelsea":        "#034694",
+    "Crystal Palace": "#1B458F",
+    "Everton":        "#003399",
+    "Fulham":         "#CC0000",
+    "Hull City":      "#F5A12D",
+    "Ipswich":        "#0000FF",
+    "Leeds":          "#FFCD00",
+    "Leicester":      "#003090",
+    "Liverpool":      "#C8102E",
+    "Luton":          "#F78F1E",
+    "Man City":       "#6CABDD",
+    "Man Utd":        "#DA291C",
+    "Middlesbrough":  "#E01414",
+    "Newcastle":      "#241F20",
+    "Nott'm Forest":  "#DD0000",
+    "Sheffield Utd":  "#EE2737",
+    "Southampton":    "#D71920",
+    "Spurs":          "#132257",
+    "Sunderland":     "#EB172B",
+    "West Ham":       "#7A263A",
+    "Wolves":         "#FDB913",
+}
+
 def team_color_map(teams):
-    return {t: PITCH_COLORS[i % len(PITCH_COLORS)] for i, t in enumerate(sorted(teams))}
+    # クラブカラーが定義されていればそれを使い、なければPITCH_COLORSで割り当て
+    result = {}
+    fallback_idx = 0
+    used_colors = set()
+    for t in sorted(teams):
+        if t in _EPL_CLUB_COLORS:
+            result[t] = _EPL_CLUB_COLORS[t]
+            used_colors.add(_EPL_CLUB_COLORS[t])
+        else:
+            # 既に使われていない色を選ぶ
+            while fallback_idx < len(PITCH_COLORS) and PITCH_COLORS[fallback_idx] in used_colors:
+                fallback_idx += 1
+            c = PITCH_COLORS[fallback_idx % len(PITCH_COLORS)]
+            result[t] = c
+            used_colors.add(c)
+            fallback_idx += 1
+    return result
 
 # ── Chart helpers ─────────────────────────────────────────────────────────────
 def to_p90(col: str, df, mins_col: str = "mins_p90") -> tuple[str, str]:
