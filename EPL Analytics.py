@@ -401,6 +401,13 @@ def build_apf_team_stats(fixture_cache: dict, df_teams: "pd.DataFrame") -> "pd.D
         offsides_pm        = ("offsides",          "mean"),
         pass_acc           = ("pass_accuracy",     "mean"),
         passes_pm          = ("passes_total",      "mean"),
+        # Total（シーズン累計）版
+        shots_total           = ("total_shots",       "sum"),
+        shots_on_tgt_total    = ("shots_on_target",   "sum"),
+        shots_inbox_total     = ("shots_inside_box",  "sum"),
+        shots_against_total   = ("shots_against",     "sum"),
+        shots_on_tgt_ag_total = ("shots_on_tgt_ag",   "sum"),
+        shots_inbox_ag_total  = ("shots_inbox_ag",    "sum"),
         n_fixtures         = ("total_shots",       "count"),
     ).reset_index()
 
@@ -1119,6 +1126,12 @@ if "Team" in page:
     "CBI (team)":         ("cbi",            "Team clearances+blocks+interceptions","Defense"),
     "Def Contribution":   ("def_contribution","Team defensive contribution score", "Defense"),
     # ── API-Football 取得指標（要APIキー）──────────────────────────────────────
+    "Shots (Total) ⚡":        ("shots_total",        "Total shots, season cumulative (API-Football)", "Attack⚡"),
+    "Shots on Target (Total) ⚡":("shots_on_tgt_total", "Total shots on target, cumulative",          "Attack⚡"),
+    "Shots in Box (Total) ⚡":   ("shots_inbox_total",   "Total shots inside box, cumulative",        "Attack⚡"),
+    "Shots Against (Total) ⚡":  ("shots_against_total", "Total shots conceded, cumulative",          "Defense⚡"),
+    "Shots on Tgt Ag (Total) ⚡":("shots_on_tgt_ag_total","Total on-target shots conceded, cumulative","Defense⚡"),
+    "Shots in Box Ag (Total) ⚡": ("shots_inbox_ag_total", "Total inside-box shots conceded, cumulative","Defense⚡"),
     "Shots/Match ⚡":     ("shots_pm",        "Total shots per match (API-Football)", "Attack⚡"),
     "Shots on Target/M ⚡":("shots_on_tgt_pm","Shots on target per match",            "Attack⚡"),
     "Shots in Box/M ⚡":  ("shots_inbox_pm",  "Shots inside box per match",           "Attack⚡"),
