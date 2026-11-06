@@ -1,21 +1,21 @@
 code,id,name,short_name,strength,played,win,draw,loss,points,position
-3,1,Arsenal,ARS,,0,0,0,0,0,2
-7,2,Aston Villa,AVL,,0,0,0,0,0,9
-91,3,Bournemouth,BOU,,0,0,0,0,0,13
+3,1,Arsenal,ARS,,0,0,0,0,0,1
+7,2,Aston Villa,AVL,,0,0,0,0,0,10
+91,3,Bournemouth,BOU,,0,0,0,0,0,8
 94,4,Brentford,BRE,,0,0,0,0,0,6
 36,5,Brighton,BHA,,0,0,0,0,0,3
-8,6,Chelsea,CHE,,0,0,0,0,0,5
-9,7,Coventry City,COV,,0,0,0,0,0,19
-31,8,Crystal Palace,CRY,,0,0,0,0,0,17
-11,9,Everton,EVE,,0,0,0,0,0,11
+8,6,Chelsea,CHE,,0,0,0,0,0,4
+9,7,Coventry City,COV,,0,0,0,0,0,16
+31,8,Crystal Palace,CRY,,0,0,0,0,0,18
+11,9,Everton,EVE,,0,0,0,0,0,7
 54,10,Fulham,FUL,,0,0,0,0,0,15
-88,11,Hull City,HUL,,0,0,0,0,0,10
-40,12,Ipswich Town,IPS,,0,0,0,0,0,12
-2,13,Leeds,LEE,,0,0,0,0,0,7
-14,14,Liverpool,LIV,,0,0,0,0,0,4
-43,15,Man City,MCI,,0,0,0,0,0,1
-1,16,Man Utd,MUN,,0,0,0,0,0,16
-4,17,Newcastle,NEW,,0,0,0,0,0,8
-17,18,Nott'm Forest,NFO,,0,0,0,0,0,18
-6,19,Spurs,TOT,,0,0,0,0,0,14
+88,11,Hull City,HUL,,0,0,0,0,0,11
+40,12,Ipswich Town,IPS,,0,0,0,0,0,14
+2,13,Leeds,LEE,,0,0,0,0,0,12
+14,14,Liverpool,LIV,,0,0,0,0,0,5
+43,15,Man City,MCI,,0,0,0,0,0,2
+1,16,Man Utd,MUN,,0,0,0,0,0,17
+4,17,Newcastle,NEW,,0,0,0,0,0,13
+17,18,Nott'm Forest,NFO,,0,0,0,0,0,19
+6,19,Spurs,TOT,,0,0,0,0,0,9
 56,20,Sunderland,SUN,,0,0,0,0,0,20
