@@ -342,7 +342,20 @@ def build_team_timeseries(dg_raw, team_id_map: dict) -> "pd.DataFrame":
     ts = ts.sort_values(["team_name", "GW"]).reset_index(drop=True)
 
     # 累積列を追加
-    cum_cols = ["xG","xGC","pts","gf","ga","yellow_cards","creativity","threat","influence"]
+    # --- per-fixture Poisson xPts (GK-only xGC) ---
+    from scipy.stats import poisson as _poi
+    ts = ts.merge(_xgc_fix_ts, on=["team_name","GW","fixture"], how="left")
+    _lf = ts["xG"].fillna(0).clip(lower=0).to_numpy()
+    _la = ts["xGC_fix"].fillna(0).clip(lower=0).to_numpy()
+    _k = np.arange(9)
+    _joint = _poi.pmf(_k[None,:], _lf[:,None])[:,:,None] * _poi.pmf(_k[None,:], _la[:,None])[:,None,:]
+    _win = np.tril(np.ones((9,9)), -1).T  # i>j
+    _win = (np.arange(9)[:,None] > np.arange(9)[None,:]).astype(float)
+    _drw = np.eye(9)
+    ts["xPts"] = 3*(_joint*_win).sum(axis=(1,2)) + (_joint*_drw).sum(axis=(1,2))
+    ts["luck_pts"] = ts["pts"] - ts["xPts"]
+    ts = ts.sort_values(["team_name","GW"]).reset_index(drop=True)
+    cum_cols = ["xPts","luck_pts","xG","xGC","pts","gf","ga","yellow_cards","creativity","threat","influence"]
     for col in cum_cols:
         if col in ts.columns:
             ts[f"{col}_cum"] = ts.groupby("team_name")[col].cumsum()
@@ -1411,6 +1424,10 @@ if "Team" in page:
             "Creativity (pm)":             ("creativity",      False, "vaastav"),
             "Threat (pm)":                 ("threat",          False, "vaastav"),
             "Influence (pm)":              ("influence",       False, "vaastav"),
+            "xPts (per match)":            ("xPts",            False, "vaastav"),
+            "Luck pts (per match)":        ("luck_pts",        False, "vaastav"),
+            "xPts (cumulative)":           ("xPts_cum",        True,  "vaastav"),
+            "Luck pts (cumulative)":       ("luck_pts_cum",    True,  "vaastav"),
             "xG (cumulative)":             ("xG_cum",          True,  "vaastav"),
             "xGC (cumulative)":            ("xGC_cum",         True,  "vaastav"),
             "Goals (cumulative)":          ("gf_cum",          True,  "vaastav"),
