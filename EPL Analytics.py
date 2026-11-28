@@ -1263,7 +1263,7 @@ if "Team" in page:
                 try:
                     styled = df_trank_show.style.background_gradient(
                         subset=[rank_metric_t], cmap="RdYlGn_r" if sort_asc_t else "RdYlGn"
-                    ).format({rank_metric_t: "{:.3f}"})
+                    ).highlight_null(props="background-color:#e5e7eb;color:#6b7280").format({rank_metric_t: "{:.3f}"})
                     st.dataframe(styled, use_container_width=True)
                 except Exception:
                     st.dataframe(df_trank_show, use_container_width=True)
@@ -1778,6 +1778,7 @@ if "Team" in page:
                 st.dataframe(
                     df_custom[show_cols].style
                     .background_gradient(subset=[metric_name], cmap="RdYlGn")
+                    .highlight_null(props="background-color:#e5e7eb;color:#6b7280")
                     .format({metric_name: "{:.3f}"}),
                     use_container_width=True
                 )
@@ -1983,6 +1984,7 @@ else:
                 df_top_show = df_top.rename(columns={col_r: rank_metric_label})
                 styled = (df_top_show.style
                           .background_gradient(subset=[rank_metric_label], cmap="RdYlGn")
+                          .highlight_null(props="background-color:#e5e7eb;color:#6b7280")
                           .format({rank_metric_label: "{:.3f}"}))
                 # pandas 3.x は .map()、旧版は .applymap()
                 try:
@@ -2439,7 +2441,7 @@ else:
                     st.markdown("**集計結果**")
                     st.dataframe(
                         df_unit[["ユニット","選手","共出場GW"] + metric_cols]
-                        .style.background_gradient(subset=metric_cols, cmap="RdYlGn"),
+                        .style.background_gradient(subset=metric_cols, cmap="RdYlGn").highlight_null(props="background-color:#e5e7eb;color:#6b7280"),
                         use_container_width=True, hide_index=True
                     )
 
@@ -2939,6 +2941,7 @@ else:
             )
             st.dataframe(df_pc.style
                          .background_gradient(subset=[pmetric_name], cmap="RdYlGn")
+                         .highlight_null(props="background-color:#e5e7eb;color:#6b7280")
                          .format({pmetric_name:"{:.3f}"}),
                          use_container_width=True)
 
