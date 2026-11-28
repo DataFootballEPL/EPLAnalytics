@@ -264,7 +264,19 @@ APF_TEAM_NAME_MAP = {
 
 def _normalize_team_name(name: str) -> str:
     """API-Footballのチーム名をvaastav形式に変換"""
-    return APF_TEAM_NAME_MAP.get(name, name)
+    mapped = APF_TEAM_NAME_MAP.get(name, name)
+    known = globals().get("_KNOWN_TEAMS") or set()
+    if not known or mapped in known:
+        return mapped
+    if name in known:
+        return name
+    # 表記ゆれ吸収: "Coventry" ⇔ "Coventry City", "Ipswich" ⇔ "Ipswich Town" 等
+    def _k(x): return x.lower().replace(" city","").replace(" town","").replace(" united","").replace(" utd","").strip()
+    for cand in (name, mapped):
+        for kn in known:
+            if _k(kn) == _k(cand) or kn.lower().startswith(cand.lower()) or cand.lower().startswith(kn.lower()):
+                return kn
+    return mapped
 
 
 def build_team_timeseries(dg_raw, team_id_map: dict) -> "pd.DataFrame":
@@ -1045,6 +1057,7 @@ def load_apf_json(season_str: str) -> dict:
 
 _apf_json = load_apf_json(season)
 if _apf_json:
+    _KNOWN_TEAMS = set(df_teams["team_name"].astype(str))
     df_teams = build_apf_team_stats(_apf_json, df_teams)
     st.sidebar.success(f"⚡ {len(_apf_json)}試合分スタッツ読込済")
 else:
