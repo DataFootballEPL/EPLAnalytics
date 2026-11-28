@@ -69,6 +69,11 @@ input,textarea{color:#1a1a2e !important;background:#fff !important;}
 .stSelectbox [class^="css"],[class*=" css"]{color:#1a1a2e !important;}
 div[data-baseweb="select"] > div{color:#1a1a2e !important;background:#fff !important;}
 div[data-baseweb="select"] > div > div{color:#1a1a2e !important;}
+/* multiselect: タグを折り返して全表示（左端が隠れず個別に×で削除可能） */
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div:first-child{flex-wrap:wrap !important;height:auto !important;max-height:none !important;overflow:visible !important;}
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div:first-child > div{flex-wrap:wrap !important;overflow:visible !important;max-height:none !important;}
+[data-testid="stMultiSelect"] *{-webkit-mask-image:none !important;mask-image:none !important;}
+[data-testid="stMultiSelect"] [data-baseweb="tag"]{max-width:100% !important;}
 .stTabs [data-baseweb="tab"]{background:#e8f0eb;color:#1a1a2e !important;font-weight:600;}
 .stTabs [aria-selected="true"]{background:#1e3a5f !important;}
 .stTabs [aria-selected="true"] *{color:#fff !important;}
@@ -821,7 +826,7 @@ def radar(df_sel, metrics, labels, title, z_pool=None):
     n      = len(labels)
     angles = np.linspace(0, 2*np.pi, n, endpoint=False).tolist()
     angles += angles[:1]
-    fig, ax = plt.subplots(figsize=(5,5), subplot_kw=dict(polar=True))
+    fig, ax = plt.subplots(figsize=(6.4,6.6), subplot_kw=dict(polar=True))
     fig.patch.set_facecolor("#f5f7fa")
     ax.set_facecolor("#ffffff")
     ax.spines["polar"].set_edgecolor("#cccccc")
@@ -840,12 +845,14 @@ def radar(df_sel, metrics, labels, title, z_pool=None):
     ax.set_ylim(0,1)
     ax.set_yticks([.25,.5,.75])
     ax.set_yticklabels(["25%","50%","75%"], size=7, color="#555555")
-    ax.tick_params(pad=10)
-    ax.set_title(title, size=10, color=C["pitch"], pad=20, fontweight="bold")
-    ax.legend(handles=patches, loc="upper right",
-              bbox_to_anchor=(1.5, 1.15), fontsize=8,
-              facecolor="#f5f7fa", edgecolor="#cccccc", labelcolor="#1a1a2e")
-    plt.tight_layout()
+    ax.tick_params(axis="x", pad=14)
+    ax.set_title(title, size=11, color=C["pitch"], pad=32, fontweight="bold")
+    # 凡例はグラフの下に横並びで配置（軸ラベル・グラフと重ならない）
+    ax.legend(handles=patches, loc="upper center",
+              bbox_to_anchor=(0.5, -0.12), ncol=min(len(patches), 3), fontsize=9,
+              facecolor="#f5f7fa", edgecolor="#cccccc", labelcolor="#1a1a2e",
+              frameon=False)
+    fig.subplots_adjust(left=0.12, right=0.88, top=0.84, bottom=0.2)
     return fig
 
 def scatter_2d(df, x_col, y_col, label_col, title, c_map=None):
@@ -2877,8 +2884,8 @@ else:
                               label=compare_team, alpha=0.85)
                     ax_r.fill(angles, team_pct, color="#f4a261", alpha=0.12)
 
-                ax_r.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15),
-                             fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
+                ax_r.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1),
+                             ncol=3, fontsize=8, facecolor="#ffffff", edgecolor="#cccccc",
                              labelcolor="#1a1a2e")
 
                 ax_r.set_title("Dream Team  (per 90 min — percentile vs league)",
